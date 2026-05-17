@@ -1,0 +1,94 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: chief_editor_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: chief_editor
+    ports:
+      - "5432:5432"
+    volumes:
+      - chief_editor_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chief_editor"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - chief_editor
+
+  redis:
+    image: redis:7-alpine
+    container_name: chief_editor_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - chief_editor
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    container_name: chief_editor_api
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/chief_editor
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    networks:
+      - chief_editor
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/worker.Dockerfile
+    container_name: chief_editor_worker
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/chief_editor
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    networks:
+      - chief_editor
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    container_name: chief_editor_web
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      API_BASE_URL: http://api:8000
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+    networks:
+      - chief_editor
+
+networks:
+  chief_editor:
+    driver: bridge
+
+volumes:
+  chief_editor_pgdata:

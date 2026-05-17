@@ -1,0 +1,60 @@
+# Fly.io config — single-machine SQLite alpha deploy.
+# One container, two processes (uvicorn + worker as child), one mounted volume.
+#
+# Why single-image: avoids the Managed Postgres + Upstash Redis billing gate
+# while still giving the Vercel frontend a real backend to talk to.
+# When you upgrade to Managed Postgres later, switch the Dockerfile back to
+# infra/docker/api.Dockerfile and re-enable fly.worker.toml as a separate app.
+
+app = "chief-editor-api"
+primary_region = "fra"
+
+[build]
+  dockerfile = "infra/docker/fly-combined.Dockerfile"
+
+[env]
+  APP_ENV = "prod"
+  LOG_FORMAT = "json"
+  # Safe defaults — operator must opt in via `fly secrets set` to leave any of these.
+  MOCK_MODE = "true"
+  DEMO_MODE = "false"
+  LIVE_MODE = "true"
+  DRY_RUN_PUBLISH = "true"
+  PUBLISHING_ENABLED = "false"
+  WORKER_HEARTBEAT_TTL_SECONDS = "120"
+  LLM_PROVIDER = "mock"
+  PORT = "8000"
+  # SQLite on the mounted volume. WAL pragma enabled in chief_editor/db.py.
+  DATABASE_URL = "sqlite:////data/chief_editor.db"
+
+[mounts]
+  source = "chief_editor_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 25
+    hard_limit = 50
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "3s"
+    grace_period = "30s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpus = 1
+  cpu_kind = "shared"
+
+[deploy]
+  release_command = "python -c 'from chief_editor.db import init_db; init_db(); print(\"db ready\")'"

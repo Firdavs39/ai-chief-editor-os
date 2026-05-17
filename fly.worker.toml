@@ -1,0 +1,40 @@
+# Fly.io config for the AI Chief Editor OS worker service.
+# Long-running Python process — no HTTP service, no public port.
+#
+# Usage:
+#   fly launch --copy-config --no-deploy --config fly.worker.toml --name chief-editor-worker
+#   fly secrets set ... (use the SAME DATABASE_URL/REDIS_URL/secrets as the API)
+#   fly deploy --config fly.worker.toml
+
+app = "chief-editor-worker"
+primary_region = "fra"
+
+[build]
+  dockerfile = "infra/docker/worker.Dockerfile"
+
+[env]
+  APP_ENV = "prod"
+  LOG_FORMAT = "json"
+  MOCK_MODE = "true"
+  DEMO_MODE = "false"
+  LIVE_MODE = "true"
+  DRY_RUN_PUBLISH = "true"
+  PUBLISHING_ENABLED = "false"
+  WORKER_HEARTBEAT_TTL_SECONDS = "120"
+  LLM_PROVIDER = "mock"
+  COLLECT_INTERVAL_SECONDS = "300"
+  GENERATE_INTERVAL_SECONDS = "600"
+  PUBLISH_INTERVAL_SECONDS = "30"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpus = 1
+  cpu_kind = "shared"
+
+[processes]
+  worker = "python -m worker.main"
+
+# No [http_service] — the worker doesn't accept HTTP traffic.
+# Observability is via /worker/status on the API service which reads
+# the WorkerHeartbeat table populated by this process.

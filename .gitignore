@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+*.egg
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Node
+node_modules/
+.pnpm-store/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Env — never commit. The vault's MASTER_ENCRYPTION_KEY and ADMIN_TOKEN live here.
+.env
+.env.*
+*.env
+*.env.bak
+.runtime.env
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Build artifacts
+dist/
+build/
+*.tar.gz
+
+# Docker volumes
+.docker-data/
+
+# Telethon session
+*.session
+*.session-journal
+
+# Local DB — vault ciphertext lives in these tables; never commit.
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+
+.vercel

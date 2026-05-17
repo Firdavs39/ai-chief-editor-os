@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-chief-editor-os"
+version = "0.1.0"
+description = "AI Chief Editor OS — premium AI content intelligence platform"
+requires-python = ">=3.10"
+readme = "README.md"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlmodel>=0.0.22",
+    "psycopg[binary]>=3.2",
+    "redis>=5.2",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "httpx>=0.28",
+    "structlog>=24.4",
+    "anyio>=4.6",
+    "python-multipart>=0.0.12",
+    "feedparser>=6.0",
+    "tenacity>=9.0",
+    "uuid7>=0.1",
+    "anthropic>=0.39",
+    "openai>=1.55",
+    "python-dotenv>=1.0",
+    "cryptography>=43.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
+]
+collectors = [
+    "telethon>=1.36",
+    "asyncpraw>=7.7",
+    "python-telegram-bot>=21.6",
+]
+
+[tool.setuptools]
+package-dir = {"" = "packages/shared"}
+
+[tool.setuptools.packages.find]
+where = ["packages/shared"]
+include = ["chief_editor*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["packages/shared", "apps/api", "apps/worker", "tests"]
+extend-exclude = [".venv", "node_modules", "apps/web", ".next"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "W", "C4", "SIM"]
+ignore = ["E501", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+pythonpath = ["packages/shared", "apps/api", "apps/worker"]
