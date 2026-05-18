@@ -3,6 +3,10 @@ import type {
   CalendarEntry,
   Candidate,
   DryRunPreview,
+  GenerationArtifact,
+  GenerationRun,
+  GenerationRunsCreateResponse,
+  GenerationStep,
   PublishJob,
   ReadinessItem,
   ReadinessReport,
@@ -271,6 +275,83 @@ export const vaultApi = {
     ),
   test: (provider: string, adminToken: string) =>
     vaultRequest<ReadinessItem>(`/secrets/${provider}/test`, adminToken, {
+      method: "POST",
+      body: "{}",
+    }),
+};
+
+// ---- Quality Editorial Workflow (/generation-runs) -------------------------
+// All endpoints require X-Admin-Token. The token lives only in React memory
+// (see lib/operator-auth.tsx) and is passed explicitly by the caller. We
+// never read it from localStorage / sessionStorage / cookies / URL.
+
+async function runsRequest<T>(
+  path: string,
+  adminToken: string,
+  init: RequestInit = {},
+): Promise<T> {
+  if (!adminToken) {
+    throw new Error("admin_token_required");
+  }
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Admin-Token": adminToken,
+      ...(init.headers || {}),
+    },
+    cache: "no-store",
+  });
+  if (res.status === 401) {
+    throw new Error("admin_token_invalid");
+  }
+  if (res.status === 409) {
+    const body = await res.json().catch(() => ({}));
+    const detail = (body as { detail?: string }).detail ?? "conflict";
+    const err = new Error(detail) as Error & { code?: string };
+    err.code = "conflict";
+    throw err;
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${res.statusText}: ${body.slice(0, 200)}`);
+  }
+  if (res.status === 204) {
+    return undefined as unknown as T;
+  }
+  return (await res.json()) as T;
+}
+
+export const runsApi = {
+  create: (
+    body: { cluster_id?: string | null; top_n?: number; requested_by?: string },
+    adminToken: string,
+  ) =>
+    runsRequest<GenerationRunsCreateResponse>("/generation-runs", adminToken, {
+      method: "POST",
+      body: JSON.stringify({ requested_by: "api", ...body }),
+    }),
+  list: (adminToken: string, status?: string, limit = 50) => {
+    const q = new URLSearchParams();
+    if (status) q.set("status", status);
+    if (limit) q.set("limit", String(limit));
+    const qs = q.size ? `?${q.toString()}` : "";
+    return runsRequest<GenerationRun[]>(`/generation-runs${qs}`, adminToken);
+  },
+  get: (id: string, adminToken: string) =>
+    runsRequest<GenerationRun>(`/generation-runs/${id}`, adminToken),
+  getSteps: (id: string, adminToken: string) =>
+    runsRequest<GenerationStep[]>(
+      `/generation-runs/${id}/steps`,
+      adminToken,
+    ),
+  getArtifacts: (id: string, adminToken: string) =>
+    runsRequest<GenerationArtifact[]>(
+      `/generation-runs/${id}/artifacts`,
+      adminToken,
+    ),
+  cancel: (id: string, adminToken: string) =>
+    runsRequest<GenerationRun>(`/generation-runs/${id}/cancel`, adminToken, {
       method: "POST",
       body: "{}",
     }),

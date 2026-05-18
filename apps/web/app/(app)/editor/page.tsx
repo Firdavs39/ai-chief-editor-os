@@ -5,6 +5,7 @@ import { Topbar } from "@/components/layout/topbar";
 import { PageShell, PageSection } from "@/components/layout/page-shell";
 import { CandidateCard } from "@/components/feature/candidate-card";
 import { EmptyState } from "@/components/feature/empty-state";
+import { GenerateBriefButton } from "@/components/feature/generation/generate-brief-button";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { data } from "@/lib/data";
@@ -21,9 +22,12 @@ export default async function EditorIndexPage() {
         subtitle="Workspace для всех кандидатов от ИИ-редактора"
         pill={{ label: `${candidates.length} candidates`, tone: "violet" }}
         actions={
-          <Button size="sm" asChild>
-            <Link href="/trends"><Sparkles className="h-4 w-4" /> New from trend</Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <GenerateBriefButton size="sm" />
+            <Button size="sm" variant="outline" asChild>
+              <Link href="/trends"><Sparkles className="h-4 w-4" /> New from trend</Link>
+            </Button>
+          </div>
         }
       />
       <PageShell>

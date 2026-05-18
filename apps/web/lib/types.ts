@@ -234,6 +234,75 @@ export type StyleProfile = {
   updated_at: string;
 };
 
+// --- Quality Editorial Workflow ---------------------------------------------
+
+export type GenerationRunStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export type GenerationStepStatus =
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "skipped"
+  | "cancelled";
+
+export type GenerationRun = {
+  id: string;
+  cluster_id: string | null;
+  requested_by: string;
+  status: GenerationRunStatus;
+  current_step: string;
+  step_index: number;
+  total_steps: number;
+  candidate_id: string | null;
+  error_class: string;
+  error_message: string;
+  started_at: string | null;
+  finished_at: string | null;
+  provider: string;
+  model: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GenerationStep = {
+  id: string;
+  run_id: string;
+  step_index: number;
+  name: string;
+  status: GenerationStepStatus;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  error_class: string;
+  error_message: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GenerationArtifact = {
+  id: string;
+  run_id: string;
+  step_id: string;
+  name: string;
+  schema_version: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GenerationRunsCreateResponse = {
+  runs: GenerationRun[];
+  status: string;
+};
+
 // --- Integration Secrets Vault ----------------------------------------------
 
 export type VaultSource = "env" | "vault" | "missing" | "env+vault";

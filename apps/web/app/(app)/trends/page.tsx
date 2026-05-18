@@ -5,6 +5,7 @@ import { Topbar } from "@/components/layout/topbar";
 import { PageShell, PageSection } from "@/components/layout/page-shell";
 import { TrendCard } from "@/components/feature/trend-card";
 import { ScoreBreakdown } from "@/components/feature/score-breakdown";
+import { GenerateBriefButton } from "@/components/feature/generation/generate-brief-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,9 +49,12 @@ export default async function TrendsPage({
         subtitle="Кластеры сигналов, рейтинг и причины ранжирования"
         pill={{ label: `${filtered.length} clusters`, tone: "violet" }}
         actions={
-          <Button size="sm" asChild>
-            <Link href="/editor"><Sparkles className="h-4 w-4" /> Generate brief</Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <GenerateBriefButton size="sm" clusterId={focus?.id ?? null} />
+            <Button size="sm" variant="outline" asChild>
+              <Link href="/editor"><Sparkles className="h-4 w-4" /> Open editor</Link>
+            </Button>
+          </div>
         }
       />
       <PageShell>
