@@ -21,6 +21,7 @@ from sqlmodel import Session, select
 from chief_editor.db import get_engine, init_db, session_scope
 from chief_editor.models import (
     ApprovalDecision,
+    GenerationRun,
     PostCandidate,
     PublishJob,
     PublishResult,
@@ -33,11 +34,18 @@ from chief_editor.publishing import ApprovalRequiredError, get_publisher
 from chief_editor.publishing.mock import MockPublisher
 from chief_editor.services.candidate import generate_for_cluster
 from chief_editor.services.dry_run import compute_payload
+from chief_editor.services.generation import advance_one_step
 from chief_editor.services.pipeline import recluster, run_collection_for_source
 from chief_editor.settings import get_settings
 from chief_editor.time_utils import utcnow
 
 log = logging.getLogger("chief_editor.worker")
+
+# Status set considered "in flight" — the generation_runs_loop picks runs in
+# these states and advances them one step per tick. Terminal/cancelled runs
+# are intentionally skipped (no auto-retry; user retry via UI is future work).
+_GENERATION_PICKUP_STATUSES = ("queued", "running")
+_GENERATION_TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
 
 
 def _heartbeat(session: Session, loop_name: str, event: str = "") -> None:
@@ -130,6 +138,83 @@ async def generation_loop(stop: asyncio.Event) -> None:
                 log.info("generation tick: %d new", generated)
         except Exception as exc:  # noqa: BLE001
             log.exception("generation loop error: %s", exc)
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval)
+        except asyncio.TimeoutError:
+            continue
+
+
+# ---------------------------------------------------------------------------
+# Quality Editorial Workflow — generation_runs_loop (Phase 3)
+#
+# Picks GenerationRun rows in "queued" / "running" state and advances each by
+# exactly ONE step per tick via services.generation.advance_one_step. The
+# workflow engine owns its own commits and the finalizer transaction; the
+# worker just selects rows, advances them, and writes its heartbeat.
+#
+# Hard rules (Security Lead invariants):
+#   - This loop NEVER creates ApprovalDecision rows.
+#   - This loop NEVER creates PublishJob rows.
+#   - This loop NEVER calls any Publisher.
+#   - This loop NEVER touches DRY_RUN_PUBLISH or PUBLISHING_ENABLED.
+#   - Failed runs are NOT auto-retried in Phase 3 (intentional; user-triggered
+#     retry from the UI is future work).
+#   - Cancelled runs are skipped (`status="cancelled"` excludes them from the
+#     pick query; a defensive in-loop re-check handles races).
+# ---------------------------------------------------------------------------
+
+
+def _generation_runs_tick(session: Session, *, limit: int = 3) -> int:
+    """One pass of the generation_runs loop. Returns count of runs advanced.
+
+    Selects up to `limit` runs in queued/running state ordered by created_at,
+    skips any that flipped to terminal between pick and advance, and calls
+    `advance_one_step` once per run. Heartbeats at the end of the tick so
+    the readiness UI sees the loop as fresh even when there is nothing to do.
+
+    This function is exposed at module level so tests can drive a single
+    tick deterministically without running the asyncio loop.
+    """
+    runs = list(
+        session.exec(
+            select(GenerationRun)
+            .where(GenerationRun.status.in_(_GENERATION_PICKUP_STATUSES))  # type: ignore[attr-defined]
+            .order_by(GenerationRun.created_at.asc())
+            .limit(max(1, int(limit or 1)))
+        ).all()
+    )
+
+    advanced = 0
+    for run in runs:
+        # Race guard — a cancel that lands between the SELECT and here MUST
+        # short-circuit BEFORE any LLM call. `advance_one_step` does its own
+        # refresh + cancellation check, but checking here as well keeps the
+        # contract explicit at the worker boundary.
+        session.refresh(run)
+        if run.status in _GENERATION_TERMINAL_STATUSES:
+            continue
+        advance_one_step(session, run)
+        advanced += 1
+
+    _heartbeat(session, "generation_runs", event="generation_runs.tick")
+    return advanced
+
+
+async def generation_runs_loop(stop: asyncio.Event) -> None:
+    settings = get_settings()
+    interval = max(15, settings.generate_interval_seconds // 8)
+    while not stop.is_set():
+        try:
+            with session_scope() as session:
+                advanced = _generation_runs_tick(session)
+                if advanced:
+                    log.info(
+                        "generation_runs tick advanced %d run(s) (interval=%ds)",
+                        advanced,
+                        interval,
+                    )
+        except Exception as exc:  # noqa: BLE001 — never let the loop die
+            log.exception("generation_runs loop error: %s", exc)
         try:
             await asyncio.wait_for(stop.wait(), timeout=interval)
         except asyncio.TimeoutError:
@@ -369,7 +454,7 @@ async def _main() -> None:
     # flips to `running` within a second of boot, before the first slow tick.
     try:
         with session_scope() as boot_session:
-            for loop_name in ("collector", "generation", "publisher"):
+            for loop_name in ("collector", "generation", "publisher", "generation_runs"):
                 _heartbeat(boot_session, loop_name, event="worker.boot")
     except Exception as exc:  # noqa: BLE001
         log.warning("worker initial heartbeat failed: %s", exc)
@@ -395,6 +480,7 @@ async def _main() -> None:
         collector_loop(stop),
         generation_loop(stop),
         publisher_loop(stop),
+        generation_runs_loop(stop),
     )
 
     get_engine().dispose()
