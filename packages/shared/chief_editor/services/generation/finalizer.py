@@ -1,10 +1,19 @@
 """Finalizer — Step 11 of the Quality Editorial Workflow.
 
 Backend-only step (NO LLM call). Runs after `quality_judge` has succeeded
-and the run has both `final_brief` and `quality_report` artifacts. Assembles
+and the run has both `final_brief` and `quality_report` artifacts. Stages
 the canonical `PostCandidate(status="draft")` row, runs the existing
 deterministic `chief_editor.services.critic.critique()` heuristic over the
-final fields, and links the run to the candidate via `run.candidate_id`.
+final fields, and stages `run.candidate_id`.
+
+**Transaction ownership (Phase 2 hotfix):**
+This function does NOT call `session.commit()`. The workflow engine
+(`workflow.py::advance_one_step`) owns the transaction for the finalizer
+step and commits the PostCandidate together with the candidate_link
+artifact, the GenerationStep status update, and the GenerationRun status
+update in a single atomic transaction. If anything after this function
+fails, the workflow's exception handler calls `session.rollback()` so no
+orphan PostCandidate row persists.
 
 This is the **only** place in the entire `services/generation/` package
 that creates a `PostCandidate`. The Security Lead invariant:
@@ -34,7 +43,7 @@ class FinalizerError(RuntimeError):
 
 
 def finalize_candidate(session: Session, run: GenerationRun) -> dict:
-    """Create the draft PostCandidate for this run.
+    """Stage the draft PostCandidate for this run. Does NOT commit.
 
     Returns the artifact payload `{"candidate_id": <new candidate id>}`.
     Raises FinalizerError if either required prior artifact is missing.
@@ -44,10 +53,17 @@ def finalize_candidate(session: Session, run: GenerationRun) -> dict:
       from this code path.
     - No ApprovalDecision or PublishJob is created here or anywhere in the
       generation pipeline.
-    - The heuristic `critique()` runs over the assembled fields and the
-      output is stored as `critic_notes`, mirroring the legacy
+    - The heuristic `critique()` runs over the assembled fields; the output
+      is stored as `critic_notes`, mirroring the legacy
       `services/candidate.py::generate_for_cluster` shape so existing
       Editor UI keeps working.
+    - **No `session.commit()`**: the workflow engine commits the candidate
+      together with the artifact and step/run status updates as a single
+      atomic transaction. The candidate.id is available immediately after
+      `session.add(candidate)` because `TimestampedBase` generates the UUID
+      client-side via `default_factory=new_uuid` (see `models/_base.py`).
+      `session.flush()` is called to send the INSERT inside the open
+      transaction so a subsequent failure rolls it back atomically.
     """
     artifacts = get_run_artifacts_by_name(session, run)
 
@@ -92,19 +108,21 @@ def finalize_candidate(session: Session, run: GenerationRun) -> dict:
         status="draft",   # invariant — no other status is reachable here
     )
     session.add(candidate)
-    session.commit()
-    session.refresh(candidate)
+    # Flush sends the INSERT inside the open transaction so the workflow's
+    # rollback path can discard it atomically on a post-finalizer failure.
+    # The id is already populated client-side via TimestampedBase, so
+    # `session.refresh(candidate)` is unnecessary and would only re-read
+    # rows the same session just inserted.
+    session.flush()
 
-    # Link the run to the candidate. The workflow engine commits this on
-    # successful step completion alongside the GenerationArtifact row.
+    # Stage the link on the run row. The workflow engine commits this
+    # update alongside the candidate_link artifact and step/run statuses.
     run.candidate_id = candidate.id
     run.updated_at = utcnow()
     session.add(run)
-    session.commit()
-    session.refresh(run)
 
     log.info(
-        "generation.finalizer.candidate_created run_id=%s candidate_id=%s status=%s",
+        "generation.finalizer.candidate_staged run_id=%s candidate_id=%s status=%s",
         run.id,
         candidate.id,
         candidate.status,

@@ -330,41 +330,60 @@ def advance_one_step(session: Session, run: GenerationRun) -> GenerationRun:
 
     except Exception as exc:  # noqa: BLE001 — one terminal failure path
         msg = str(exc)[:240]
+        error_class = type(exc).__name__
+
+        # Discard ANY uncommitted state staged by this step. Critical for the
+        # finalizer step: finalize_candidate stages a PostCandidate and a
+        # run.candidate_id update without committing; if a downstream
+        # operation in this try-block then fails, the rollback prevents an
+        # orphan PostCandidate from persisting. For LLM steps this is a
+        # no-op (provider failures leave nothing staged on the session).
+        session.rollback()
+
         finished_at = utcnow()
-        step.status = "failed"
-        step.finished_at = finished_at
-        step.error_class = type(exc).__name__
-        step.error_message = msg
-        if started_at:
-            step.duration_ms = int(
-                (finished_at - started_at).total_seconds() * 1000
-            )
-        step.updated_at = finished_at
 
-        run.status = "failed"
-        run.error_class = step.error_class
-        run.error_message = msg
-        run.finished_at = finished_at
-        run.updated_at = finished_at
+        # The step row and run row were committed earlier (with status
+        # "running"), so they exist in the DB. Re-fetch them through the
+        # session so the failure-state update happens on fresh ORM objects.
+        step_db = session.get(GenerationStep, step.id)
+        if step_db is not None:
+            step_db.status = "failed"
+            step_db.finished_at = finished_at
+            step_db.error_class = error_class
+            step_db.error_message = msg
+            if started_at:
+                step_db.duration_ms = int(
+                    (finished_at - started_at).total_seconds() * 1000
+                )
+            step_db.updated_at = finished_at
+            session.add(step_db)
 
-        session.add(step)
-        session.add(run)
+        run_db = session.get(GenerationRun, run.id) or run
+        run_db.status = "failed"
+        run_db.error_class = error_class
+        run_db.error_message = msg
+        run_db.finished_at = finished_at
+        run_db.updated_at = finished_at
+        # Defensive: ensure candidate_id stays None on failure even if some
+        # caller mutated the in-memory object before the exception fired.
+        run_db.candidate_id = None
+        session.add(run_db)
         session.commit()
-        session.refresh(run)
+        session.refresh(run_db)
 
         log.warning(
             "generation.run.failed run_id=%s step=%s error_class=%s",
-            run.id,
+            run_db.id,
             step_def.name,
-            step.error_class,
+            error_class,
         )
         _audit_run_log(
             session,
             "generation.run.failed",
-            run=run,
-            error_class=step.error_class,
+            run=run_db,
+            error_class=error_class,
         )
-        return run
+        return run_db
 
 
 # ---------------------------------------------------------------------------

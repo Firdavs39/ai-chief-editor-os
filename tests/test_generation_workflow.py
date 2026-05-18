@@ -553,3 +553,192 @@ def test_validate_payload_quality_report_enum_recommendation() -> None:
                 "recommendation": "ship-it-now",
             },
         )
+
+
+# ---------------------------------------------------------------------------
+# Transaction ownership — workflow.py owns the finalizer step's transaction.
+# ---------------------------------------------------------------------------
+
+
+def test_finalizer_does_not_commit_independently(client, session) -> None:
+    """The finalizer must stage the PostCandidate and run.candidate_id but
+    leave the commit to the workflow engine. We exercise this by calling
+    `finalize_candidate` directly on a fully-staged run, then rolling back
+    BEFORE the workflow would normally commit. The PostCandidate must NOT
+    persist."""
+    from sqlmodel import select as _select
+
+    from chief_editor.models import GenerationArtifact as _Artifact
+    from chief_editor.models import GenerationStep as _Step
+
+    _seed(client)
+    run = _make_run(session)
+
+    # Manually seed the prerequisites the finalizer needs: a final_brief and
+    # quality_report artifact. We don't go through the full LLM workflow
+    # here — we want to isolate the transactional behavior.
+    research_step = _Step(run_id=run.id, step_index=0, name="placeholder", status="succeeded")
+    session.add(research_step)
+    session.commit()
+    session.refresh(research_step)
+
+    session.add(
+        _Artifact(
+            run_id=run.id,
+            step_id=research_step.id,
+            name="final_brief",
+            payload={
+                "editorial_rationale": "test",
+                "topic": "Тестовая тема",
+                "source_summary": "summary",
+                "why_it_matters": "matters",
+                "psychology_hook": "hook",
+                "final_tg": "tg body",
+                "final_threads": "threads body",
+                "final_reddit": "reddit body",
+                "cta": "Сохрани.",
+            },
+        )
+    )
+    session.add(
+        _Artifact(
+            run_id=run.id,
+            step_id=research_step.id,
+            name="quality_report",
+            payload={
+                "editorial_rationale": "ok",
+                "style_match_score": 0.8,
+                "viral_score": 0.7,
+                "slop_risk": 0.1,
+                "controversy_risk": 0.05,
+                "recommendation": "approve",
+            },
+        )
+    )
+    session.commit()
+
+    candidates_before = len(session.exec(_select(PostCandidate)).all())
+
+    # Call finalizer directly. It MUST NOT commit.
+    payload = finalize_candidate(session, run)
+    assert "candidate_id" in payload
+
+    # Roll back. If the finalizer had committed independently the candidate
+    # would survive this rollback — that's the bug we are guarding against.
+    session.rollback()
+
+    candidates_after = len(session.exec(_select(PostCandidate)).all())
+    assert candidates_after == candidates_before, (
+        "PostCandidate persisted across rollback — finalizer committed independently"
+    )
+
+    # The staged run.candidate_id should also be rolled back.
+    session.refresh(run)
+    assert run.candidate_id is None
+
+
+def test_post_finalizer_failure_does_not_create_orphan_post_candidate(
+    client, session, monkeypatch
+) -> None:
+    """Run the full workflow through step 10, then inject a failure AFTER
+    `finalize_candidate` returns but BEFORE the workflow commits step 11.
+    The PostCandidate must not persist, and the run must be marked failed
+    with candidate_id=None."""
+    from chief_editor.services.generation import workflow as workflow_module
+
+    _seed(client)
+    run = _make_run(session)
+    candidates_before = len(session.exec(select(PostCandidate)).all())
+    approvals_before = len(session.exec(select(ApprovalDecision)).all())
+    jobs_before = len(session.exec(select(PublishJob)).all())
+
+    # Wrap the real _execute_finalizer_step so it does its full work
+    # (adds PostCandidate, sets run.candidate_id) and then raises. The
+    # workflow's except handler should rollback and clean up.
+    real_finalizer = workflow_module._execute_finalizer_step
+
+    def _boom_after_finalizer(session, run):
+        real_finalizer(session, run)
+        raise RuntimeError("simulated post-finalizer failure")
+
+    monkeypatch.setattr(
+        workflow_module, "_execute_finalizer_step", _boom_after_finalizer
+    )
+
+    run = run_to_completion_for_tests(session, run, max_steps=20)
+
+    assert run.status == "failed"
+    assert run.error_class == "RuntimeError"
+    assert "simulated post-finalizer failure" in run.error_message
+    assert run.candidate_id is None, "run.candidate_id leaked across the failure"
+
+    # No new PostCandidate, no ApprovalDecision, no PublishJob.
+    assert len(session.exec(select(PostCandidate)).all()) == candidates_before, (
+        "orphan PostCandidate persisted after post-finalizer failure"
+    )
+    assert len(session.exec(select(ApprovalDecision)).all()) == approvals_before
+    assert len(session.exec(select(PublishJob)).all()) == jobs_before
+
+    # The candidate_link artifact must also be absent (workflow would have
+    # added it after the finalizer succeeded, but the failure prevented
+    # the commit). Steps 1-10 artifacts are committed earlier (one commit
+    # per step), so they should be present.
+    artifacts = list(
+        session.exec(
+            select(GenerationArtifact).where(GenerationArtifact.run_id == run.id)
+        ).all()
+    )
+    names = {a.name for a in artifacts}
+    assert "candidate_link" not in names
+    # Verify the prior steps' artifacts did survive (per-step commit).
+    assert {"research_brief", "final_brief", "quality_report"}.issubset(names)
+
+
+def test_full_mock_workflow_still_creates_exactly_one_draft_post_candidate(
+    client, session
+) -> None:
+    """Regression for the hotfix: with the finalizer no longer committing
+    independently, the happy path still produces exactly one PostCandidate
+    via the workflow engine's single commit at the end of step 11."""
+    _seed(client)
+    candidates_before = len(session.exec(select(PostCandidate)).all())
+    approvals_before = len(session.exec(select(ApprovalDecision)).all())
+    jobs_before = len(session.exec(select(PublishJob)).all())
+
+    run = _make_run(session)
+    run = run_to_completion_for_tests(session, run)
+
+    assert run.status == "succeeded"
+    assert run.candidate_id is not None
+
+    cands_after = list(session.exec(select(PostCandidate)).all())
+    assert len(cands_after) == candidates_before + 1
+    new_cand = next(c for c in cands_after if c.id == run.candidate_id)
+    assert new_cand.status == "draft"
+
+    assert len(session.exec(select(ApprovalDecision)).all()) == approvals_before
+    assert len(session.exec(select(PublishJob)).all()) == jobs_before
+
+
+def test_finalizer_source_has_no_session_commit_call() -> None:
+    """AST guard: the finalizer module must not invoke session.commit().
+    Future maintainers will hit this test if they reintroduce the bug.
+    Docstring mentions of session.commit() are allowed — only actual
+    Attribute call expressions count."""
+    import ast
+    import inspect
+
+    from chief_editor.services.generation import finalizer as fmod
+
+    tree = ast.parse(inspect.getsource(fmod))
+    offending: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        # Match `<anything>.commit(...)` where the attribute name is `commit`.
+        if isinstance(func, ast.Attribute) and func.attr == "commit":
+            offending.append(f"line {getattr(node, 'lineno', '?')}: {ast.unparse(node)}")
+    assert offending == [], (
+        f"finalizer.py contains commit() calls: {offending}"
+    )
