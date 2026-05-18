@@ -15,7 +15,7 @@ Audit every change to confirm the safety invariants of the project are unbroken:
 2. **No auto-approval.** No new code creates `ApprovalDecision` or `PublishJob` rows. The approval gate (API route → worker dispatch → publisher boundary, defense-in-depth) is untouched.
 3. **Vault integrity.** Files under `packages/shared/chief_editor/services/secrets/`, `services/integration_config.py`, and `apps/api/app/routers/secrets.py` are unchanged unless the PR explicitly touches Vault. `require_admin_token` semantics preserved.
 4. **No secret leaks.** Decrypted secret values do not appear in logs, API responses, frontend payloads, or test assertions.
-5. **No chain-of-thought storage.** `GenerationArtifact` rows store only canonical step outputs (the same fields a user could see), never raw model "thinking" / internal reasoning beyond the bounded `reasoning_summary` field (≤ 240 chars).
+5. **No chain-of-thought storage.** `GenerationArtifact` rows store only canonical step outputs (the same fields a user could see), never raw model "thinking" / internal reasoning beyond the bounded `editorial_rationale` field (≤ 240 chars, user-safe).
 6. **SystemLog discipline.** The whitelist enforced in `apps/api/app/routers/secrets.py::_audit` extends to the generation router: only `provider`, `run_id`, `step`, `status`, `duration_ms`, `error_class` may appear in `SystemLog.data`. Never prompt or completion text.
 
 # Allowed scope

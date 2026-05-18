@@ -35,7 +35,7 @@ Implement, in code:
 # Expected deliverables
 
 - Models in `packages/shared/chief_editor/models/generation.py` registered in `models/__init__.py`. Use `TimestampedBase`, `json_column()`, `json_list_column()` already exported from `models/_base.py`. Status enums as string columns with index.
-- Router with `Depends(get_session)` only — no admin-token requirement for `/generation-runs` (these are operator-facing within the same trust zone as `/brief/generate`; document this decision in the docstring).
+- Router endpoints under `/generation-runs` MUST use the existing `require_admin_token` dependency (`apps/api/app/deps.py`) in alpha/live/public-tunnel mode. This protects real LLM costs and private editorial artifacts. Do NOT create a new auth system. The router-level wiring is `dependencies=[Depends(require_admin_token)]` on the `APIRouter(...)` itself so the gate is applied uniformly across POST/GET/cancel. Document this decision in the router docstring.
 - A `WorkflowEngine` in `services/generation/workflow.py` that takes a `GenerationRun` + `Session`, runs each step under its own DB transaction, and commits artifacts. The final `PostCandidate` is created ONLY by `finalizer.py` after the Quality Judge step succeeds.
 - Worker loop reuses the existing `_heartbeat`/`session_scope` patterns from `apps/worker/worker/main.py:43-89`.
 - Tests: model creation, endpoint contract, worker step execution, failure recovery, no-auto-approval safety.

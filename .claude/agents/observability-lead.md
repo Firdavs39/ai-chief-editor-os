@@ -20,7 +20,7 @@ What you design / wire up:
    - allowed keys: `run_id`, `status`, `step_count`, `duration_ms`, `error_class`.
    - forbidden keys: anything else.
 3. **OpenTelemetry semantic conventions** — adopt the Microsoft/Anthropic shared schema for agent traces if/when we wire a tracer. For v1, simple structured logs are enough; design the field names so a future OTel layer can drop in. See https://www.braintrust.dev/articles/agent-observability-complete-guide-2026 and Microsoft Foundry's agent tracing docs for naming guidance.
-4. **Artifact safety contract** — each `GenerationArtifact` row stores ONLY the canonical step output JSON (the shape the prompt schema produced). No raw model text. No private CoT. The optional `reasoning_summary` field is bounded to 240 chars and is considered a deliverable.
+4. **Artifact safety contract** — each `GenerationArtifact` row stores ONLY the canonical step output JSON (the shape the prompt schema produced). Artifacts store **public editorial rationale only, never hidden reasoning or private chain-of-thought.** The optional `editorial_rationale` field is bounded to 240 chars, is a short user-safe editorial explanation, and is considered a deliverable that may be rendered directly in the UI.
 
 # Allowed scope
 
