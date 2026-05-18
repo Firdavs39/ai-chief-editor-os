@@ -94,10 +94,13 @@ def test_post_creates_queued_runs_202(admin_client, session) -> None:
     assert body["status"] == "queued"
     assert isinstance(body["runs"], list)
     assert len(body["runs"]) >= 1
+    from chief_editor.services.generation import TOTAL_STEPS
+
     for run in body["runs"]:
         assert run["status"] == "queued"
         assert run["step_index"] == 0
-        assert run["total_steps"] == 8
+        # Phase 2: TOTAL_STEPS is 11 (10 LLM steps + finalizer).
+        assert run["total_steps"] == TOTAL_STEPS
         assert run["candidate_id"] is None
 
 

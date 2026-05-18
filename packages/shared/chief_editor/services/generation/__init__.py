@@ -1,19 +1,18 @@
-"""Quality Editorial Workflow — service skeleton (Phase 1).
+"""Quality Editorial Workflow — public surface.
 
-This phase ONLY enqueues `GenerationRun` rows. No worker execution. No LLM
-calls. No artifacts. No `PostCandidate` creation. The router uses this
-function so the implementation stays in one place.
+Phase 1: enqueue_run() creates queued GenerationRun rows only.
+Phase 2 (this commit): adds the workflow service layer:
+  - workflow.py             — advance_one_step + run_to_completion_for_tests
+  - steps.py                — STEP_SEQUENCE (11 steps)
+  - prompts.py              — Russian-first prompts + JSON schemas
+  - artifacts.py            — pydantic payload validators + DB helpers
+  - finalizer.py            — assembles PostCandidate(status="draft") after
+                              quality_judge succeeds (Step 11)
+  - provider_capabilities.py — LLMCallOptions + per-provider metadata
 
-Subsequent phases will add:
-  - workflow.py     — per-step orchestration
-  - steps.py        — STEP_SEQUENCE definitions
-  - prompts.py      — Russian-first prompts + JSON schemas
-  - artifacts.py    — payload validators
-  - finalizer.py    — assembles PostCandidate after Step 8 succeeds
-  - provider_capabilities.py — per-provider call options
-
-All of those land behind the same enqueue_run() public surface so the
-router and tests don't change shape.
+Phase 2 does NOT wire the worker loop and does NOT change the FastAPI
+router contract. The router still only enqueues; the workflow runs on
+demand via `advance_one_step` (Phase 3 will plug the worker in).
 """
 
 from __future__ import annotations
@@ -23,6 +22,8 @@ import logging
 from sqlmodel import Session, select
 
 from ...models import GenerationRun, SystemLog, TrendCluster
+from .steps import STEP_SEQUENCE, TOTAL_STEPS
+from .workflow import advance_one_step, run_to_completion_for_tests
 
 log = logging.getLogger("chief_editor.generation")
 
@@ -79,7 +80,7 @@ def enqueue_run(
             status="queued",
             current_step="",
             step_index=0,
-            total_steps=8,
+            total_steps=TOTAL_STEPS,
         )
         session.add(run)
         runs.append(run)
@@ -118,4 +119,10 @@ def enqueue_run(
     return runs
 
 
-__all__ = ["enqueue_run"]
+__all__ = [
+    "STEP_SEQUENCE",
+    "TOTAL_STEPS",
+    "advance_one_step",
+    "enqueue_run",
+    "run_to_completion_for_tests",
+]

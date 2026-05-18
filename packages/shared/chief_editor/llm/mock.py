@@ -90,6 +90,15 @@ class MockLLMProvider(LLMProvider):
         *,
         temperature: float = 0.7,
     ) -> dict[str, Any]:
+        # Phase 2 dispatch: detect the workflow step from the schema's
+        # required-key signature and return a deterministic per-step payload.
+        # Falls through to the legacy 13-field response when the schema does
+        # not match any known step (preserves `/brief/generate` mock-mode
+        # behavior and the existing test contract).
+        step_response = self._step_response_for_schema(schema, user, system)
+        if step_response is not None:
+            return step_response
+
         seed = _seed_for(user + system)
         topic = self._extract_topic(user)
         keywords = self._extract_keywords(user)
@@ -151,6 +160,219 @@ class MockLLMProvider(LLMProvider):
         }
         return result
 
+    # ------------------------------------------------------------------
+    # Phase 2 — per-step deterministic responses.
+    # Matching uses the schema's `required` keyset (a stable signature
+    # across providers). All outputs are Russian-first and bounded.
+    # ------------------------------------------------------------------
+
+    def _step_response_for_schema(
+        self,
+        schema: dict[str, Any],
+        user: str,
+        system: str,
+    ) -> dict[str, Any] | None:
+        required = tuple(sorted(schema.get("required") or []))
+        seed = _seed_for(user + system)
+        topic = self._extract_topic(user)
+        keywords = self._extract_keywords(user)
+        kw_blob = ", ".join(keywords[:3]) if keywords else "AI и контент"
+
+        # research_brief
+        if required == ("editorial_rationale", "fact_bullets", "gaps", "source_handles"):
+            return {
+                "editorial_rationale": _shorten(
+                    f"Сигнал по теме «{topic}» подтверждён в нескольких источниках.",
+                    240,
+                ),
+                "fact_bullets": [
+                    f"Тренд связан с {kw_blob}.",
+                    f"Сигнал растёт по {len(keywords) or 3} источникам.",
+                    "Аудитория реагирует выше среднего.",
+                ],
+                "source_handles": ["@source_a", "@source_b"][: max(1, len(keywords))],
+                "gaps": ["нет численных данных", "не хватает мнения эксперта"],
+            }
+        # angle
+        if required == (
+            "contrarian_take",
+            "editorial_rationale",
+            "primary_angle",
+            "why_now",
+        ):
+            return {
+                "editorial_rationale": _shorten(
+                    f"Сейчас рабочее окно для острого взгляда на {topic}.", 240
+                ),
+                "primary_angle": f"Главный угол: {topic} — что упускают эксперты.",
+                "contrarian_take": "Контр-тейк: тренд не для всех, нужна ниша.",
+                "why_now": "Почему сейчас: сигнал в нескольких независимых источниках.",
+            }
+        # psych
+        if required == (
+            "cognitive_bias_lever",
+            "editorial_rationale",
+            "hook_pattern",
+            "target_emotion",
+        ):
+            return {
+                "editorial_rationale": _shorten(
+                    "Целимся в FOMO + любопытство профессионала.", 240
+                ),
+                "target_emotion": "конструктивное беспокойство",
+                "hook_pattern": "никто не говорит / тихая революция",
+                "cognitive_bias_lever": "social proof (несколько источников)",
+            }
+        # voice_brief
+        if required == (
+            "editorial_rationale",
+            "must_avoid",
+            "sentence_length_target",
+            "vocab_lane",
+        ):
+            return {
+                "editorial_rationale": _shorten(
+                    "Короткие фразы, экспертный словарь, без штампов.", 240
+                ),
+                "sentence_length_target": "короткие, 8-14 слов",
+                "vocab_lane": "экспертный, без жаргона",
+                "must_avoid": ["в эпоху", "в современном мире", "давайте погрузимся"],
+            }
+        # tg_post
+        if required == ("body", "cta", "editorial_rationale", "hook"):
+            hook = _pick(_HOOKS_RU, seed)
+            why = _pick(_WHY_RU, seed >> 3)
+            cta = _pick(_CTAS_RU, seed >> 5)
+            body = (
+                f"{hook} {topic}.\n\n"
+                f"{why.capitalize()}. Это меняет правила игры для авторов в нише.\n\n"
+                f"{cta}"
+            )
+            return {
+                "editorial_rationale": _shorten(
+                    "Сильный крючок в первых 80 символах, конкретный CTA.", 240
+                ),
+                "body": _shorten(body, 1024),
+                "hook": _shorten(hook + " " + topic, 80),
+                "cta": cta,
+            }
+        # threads_post
+        if required == ("body", "cta", "editorial_rationale"):
+            cta = _pick(_CTAS_RU, seed >> 5)
+            body = (
+                f"{_pick(_HOOKS_RU, seed).rstrip(' :,.—')} — {topic.lower()}. "
+                "Кто заметил это у себя в ленте?"
+            )
+            return {
+                "editorial_rationale": _shorten(
+                    "Короткий пост под Threads с вопросом-крючком.", 240
+                ),
+                "body": _shorten(body, 500),
+                "cta": cta,
+            }
+        # reddit_post
+        if required == ("body", "cta", "editorial_rationale", "title"):
+            why = _pick(_WHY_RU, seed >> 3)
+            cta = _pick(_CTAS_RU, seed >> 5)
+            return {
+                "editorial_rationale": _shorten(
+                    "Reddit-формат: заголовок-наблюдение + аналитический body.", 240
+                ),
+                "title": _shorten(f"Observation: {topic}", 300),
+                "body": _shorten(
+                    f"Across multiple sources the same signal is showing up — "
+                    f"{kw_blob}. My take: {why}.",
+                    1500,
+                ),
+                "cta": cta,
+            }
+        # critic_report
+        if required == (
+            "editorial_rationale",
+            "factual_concerns",
+            "hook_grade",
+            "length_issues",
+            "slop_count",
+        ):
+            return {
+                "editorial_rationale": _shorten(
+                    "Черновик чистый, фактических сомнений нет.", 240
+                ),
+                "slop_count": 0,
+                "factual_concerns": [],
+                "length_issues": [],
+                "hook_grade": 8,
+            }
+        # final_brief (9 fields — documented exception)
+        # sorted order: final_tg < final_threads lexically ("g" < "h").
+        if required == (
+            "cta",
+            "editorial_rationale",
+            "final_reddit",
+            "final_tg",
+            "final_threads",
+            "psychology_hook",
+            "source_summary",
+            "topic",
+            "why_it_matters",
+        ):
+            hook = _pick(_HOOKS_RU, seed)
+            why = _pick(_WHY_RU, seed >> 3)
+            cta = _pick(_CTAS_RU, seed >> 5)
+            tg_body = _shorten(
+                f"{hook} {topic}.\n\n{why.capitalize()}. Рабочее окно для авторов в нише.\n\n{cta}",
+                1024,
+            )
+            threads_body = _shorten(
+                f"{hook.rstrip(' :,.—')} — {topic.lower()}. Кто заметил это в ленте?",
+                500,
+            )
+            reddit_body = _shorten(
+                f"Observation: {topic}. {why.capitalize()}. Curious if anyone is seeing this.",
+                1500,
+            )
+            return {
+                "editorial_rationale": _shorten(
+                    "Финальная сборка: голос ровный, длины в норме, CTA конкретный.",
+                    240,
+                ),
+                "topic": topic,
+                "source_summary": _shorten(
+                    f"Сигнал по {topic} в нескольких источниках: {kw_blob}.", 400
+                ),
+                "why_it_matters": _shorten(why.capitalize() + ".", 300),
+                "psychology_hook": _shorten(hook, 200),
+                "final_tg": tg_body,
+                "final_threads": threads_body,
+                "final_reddit": reddit_body,
+                "cta": cta,
+            }
+        # quality_report
+        if required == (
+            "controversy_risk",
+            "editorial_rationale",
+            "recommendation",
+            "slop_risk",
+            "style_match_score",
+            "viral_score",
+        ):
+            viral = 0.45 + (seed % 40) / 100
+            slop = max(0.05, 0.35 - (seed % 30) / 100)
+            controversy = (seed % 25) / 100
+            style_fit = 0.65 + (seed % 25) / 100
+            return {
+                "editorial_rationale": _shorten(
+                    "Оценка по 4 метрикам в [0,1]; рекомендация для редактора.",
+                    240,
+                ),
+                "style_match_score": round(min(0.95, style_fit), 2),
+                "viral_score": round(min(0.92, viral), 2),
+                "slop_risk": round(slop, 2),
+                "controversy_risk": round(controversy, 2),
+                "recommendation": "approve" if slop < 0.25 and viral > 0.5 else "revise",
+            }
+        return None
+
     def rewrite(self, text: str, mode: str) -> str:
         if mode == "shorter":
             return _shorten(text, max(80, int(len(text) * 0.6)))
@@ -161,7 +383,13 @@ class MockLLMProvider(LLMProvider):
 
     @staticmethod
     def _extract_topic(user_prompt: str) -> str:
-        match = re.search(r"тема[:\-]\s*(.+)", user_prompt, flags=re.IGNORECASE)
+        # Accept both "тема:" and "тема кластера:" headers — the Phase 2
+        # workflow uses the latter in research_analyst.
+        match = re.search(
+            r"тема(?:\s+кластера)?[:\-]\s*(.+)",
+            user_prompt,
+            flags=re.IGNORECASE,
+        )
         if match:
             return match.group(1).strip().split("\n")[0][:140]
         first_line = user_prompt.strip().split("\n")[0]
