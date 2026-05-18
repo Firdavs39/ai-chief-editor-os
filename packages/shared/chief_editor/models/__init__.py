@@ -2,6 +2,7 @@
 
 from .approval import ApprovalDecision
 from .candidate import PostCandidate
+from .generation import GenerationArtifact, GenerationRun, GenerationStep
 from .heartbeat import WorkerHeartbeat
 from .integration_secret import IntegrationSecret
 from .logs import SystemLog
@@ -14,6 +15,9 @@ from .trend import TrendCluster, TrendSignal
 
 __all__ = [
     "ApprovalDecision",
+    "GenerationArtifact",
+    "GenerationRun",
+    "GenerationStep",
     "IntegrationSecret",
     "MetricSnapshot",
     "PostCandidate",

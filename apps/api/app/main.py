@@ -19,6 +19,7 @@ from .routers import (
     candidates,
     collect,
     demo,
+    generation_runs,
     health,
     publishing,
     readiness,
@@ -84,4 +85,5 @@ app.include_router(style_profile.router)
 app.include_router(demo.router)
 app.include_router(readiness.router)
 app.include_router(secrets.router)
+app.include_router(generation_runs.router)
 app.include_router(worker.router)

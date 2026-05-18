@@ -304,17 +304,23 @@ def test_ollama_provider_refuses_empty_api_key() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_brief_generate_works_with_ollama_provider(client, monkeypatch) -> None:
-    """Substitute OllamaProvider into the registry cache so /brief/generate
-    uses it without ever touching the network. The endpoint must still only
-    create drafts.
+def test_brief_generate_in_real_provider_mode_is_async(client, monkeypatch) -> None:
+    """With Phase 1 of the Quality Editorial Workflow, /brief/generate in
+    real-provider mode (MOCK_MODE=false + LLM_PROVIDER=ollama) MUST NOT
+    call the LLM on the request thread. It enqueues `GenerationRun` rows
+    and returns HTTP 202 with `{run_ids, status: "queued"}`. The actual
+    candidate generation moves to the worker pipeline (Phase 2+).
     """
     from sqlmodel import select
 
     from chief_editor.db import session_scope
-    from chief_editor.models import ApprovalDecision, PublishJob
+    from chief_editor.models import (
+        ApprovalDecision,
+        GenerationRun,
+        PostCandidate,
+        PublishJob,
+    )
 
-    # Mocked provider returns a complete candidate JSON for each call.
     monkeypatch.setenv("MOCK_MODE", "false")
     monkeypatch.setenv("LLM_PROVIDER", "ollama")
     monkeypatch.setenv("OLLAMA_BASE_URL", "https://ollama.com")
@@ -322,43 +328,33 @@ def test_brief_generate_works_with_ollama_provider(client, monkeypatch) -> None:
     get_settings.cache_clear()
     reg.reset_provider_cache()
 
-    canned = (
-        '{"topic":"Kimi-driven редактура",'
-        '"source_summary":"summary",'
-        '"why_it_matters":"matters",'
-        '"psychology_hook":"hook",'
-        '"tg_version":"tg",'
-        '"threads_version":"threads",'
-        '"reddit_version":"reddit",'
-        '"cta":"Сохрани.",'
-        '"style_match_score":0.8,'
-        '"viral_score":0.7,'
-        '"slop_risk":0.1,'
-        '"controversy_risk":0.05,'
-        '"recommendation":"approve"}'
-    )
-    p = _ollama([canned, canned, canned])
-    # Inject into the registry cache so the next get_llm_provider() returns ours.
+    # Inject a tripwire provider — if real-mode /brief/generate ever calls
+    # complete_json, this raises and the test fails loudly.
+    canned_unused = '{"ok":true}'
+    p = _ollama([canned_unused])
     reg._cached = p  # type: ignore[attr-defined]
 
     client.post("/demo/seed")
-    before_approvals: int
-    before_jobs: int
     with session_scope() as s:
+        before_candidates = len(s.exec(select(PostCandidate)).all())
         before_approvals = len(s.exec(select(ApprovalDecision)).all())
         before_jobs = len(s.exec(select(PublishJob)).all())
+        before_runs = len(s.exec(select(GenerationRun)).all())
 
     res = client.post("/brief/generate", json={"top_n": 1})
-    assert res.status_code == 200
-    out = res.json()
-    assert len(out) >= 1
-    for c in out:
-        assert c["status"] == "draft"
-        assert c["topic"] == "Kimi-driven редактура"
+    assert res.status_code == 202, res.text
+    body = res.json()
+    assert body["status"] == "queued"
+    assert isinstance(body["run_ids"], list) and body["run_ids"]
 
-    # Safety: no automatic approval or publish job.
+    # Safety: no candidate, approval, or publish job created on the request
+    # thread. Only new queued GenerationRun rows.
     with session_scope() as s:
-        after_approvals = len(s.exec(select(ApprovalDecision)).all())
-        after_jobs = len(s.exec(select(PublishJob)).all())
-    assert after_approvals == before_approvals
-    assert after_jobs == before_jobs
+        assert len(s.exec(select(PostCandidate)).all()) == before_candidates
+        assert len(s.exec(select(ApprovalDecision)).all()) == before_approvals
+        assert len(s.exec(select(PublishJob)).all()) == before_jobs
+        runs = list(s.exec(select(GenerationRun)).all())
+        assert len(runs) == before_runs + len(body["run_ids"])
+        for r in runs:
+            if r.id in body["run_ids"]:
+                assert r.status == "queued"
