@@ -57,20 +57,17 @@ class OllamaProvider(LLMProvider):
     #   max_retries: 1 — single retry on a 5xx / connection error.
     # Worst case = 1 800 s as before, but typically 900 s and operators see
     # the failure sooner.
-    DEFAULT_TIMEOUT_SECONDS = 900.0
+    # Phase Q final calibration (operator decision):
+    # - Don't cap output tokens. Kimi may go verbose; that's the cost of
+    #   higher-quality drafts. Token budget is approved.
+    # - Bump per-call timeout to 30 min × 1 retry = 60 min worst case
+    #   per step. Big enough that verbose Kimi runs to completion.
+    # Trade-off: a single stuck step can now block up to 60 min before
+    # surfacing failure (vs 30 min before). Acceptable for production
+    # editorial workflow — runs are async, not interactive.
+    DEFAULT_TIMEOUT_SECONDS = 1800.0
     DEFAULT_MAX_RETRIES = 1
-    # Phase Q follow-up (calibration v2): cap output tokens so Kimi can't
-    # run verbose past schema reach. Observed in production:
-    # - Phase 7 (cleaner prompts): avg 6.8K out/step, max ~6.5K.
-    # - Phase Q (richer prompts): avg 14K out/step, outlier 31K on
-    #   telegram step (the model was drafting/refining internally).
-    # 8192 tokens ≈ 24-32K Russian characters — 3× headroom over the
-    # largest artifact (final_brief, ~21K chars combined). Tight enough
-    # to catch the 31K-token verbose runaway, loose enough not to clip
-    # any normal Phase Q step (research_analyst observed at 5.2K).
-    # First v1 attempt at 4096 truncated research_analyst's JSON — too
-    # aggressive. 8192 is the calibrated value.
-    DEFAULT_MAX_TOKENS = 8192
+    DEFAULT_MAX_TOKENS = 32000  # safe upper bound, ~96K Russian chars
 
     def __init__(
         self,

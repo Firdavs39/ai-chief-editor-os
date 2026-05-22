@@ -299,21 +299,20 @@ def test_ollama_provider_refuses_empty_api_key() -> None:
         OllamaProvider(base_url="https://ollama.com", api_key="")
 
 
-def test_ollama_provider_uses_phase5_2_timeout_defaults() -> None:
-    """Phase 5.2 follow-up: per-call timeout 900 s, 1 retry. Defaults
-    matter because Phase 5.2 run #2 ran into the SDK default (600 s × 3
-    retries = 1 800 s) which hides slow Kimi responses for too long."""
-    assert OllamaProvider.DEFAULT_TIMEOUT_SECONDS == 900.0
+def test_ollama_provider_uses_phase_q_final_timeout_defaults() -> None:
+    """Phase Q final calibration (operator decision: quality over token
+    optimization). Per-call timeout 30 min × 1 retry = 60 min worst case
+    per step. Big enough for verbose Kimi runs."""
+    assert OllamaProvider.DEFAULT_TIMEOUT_SECONDS == 1800.0
     assert OllamaProvider.DEFAULT_MAX_RETRIES == 1
 
 
-def test_ollama_provider_caps_max_tokens_post_phase_q() -> None:
-    """Phase Q follow-up (v2): cap output at 8192 tokens. v1 at 4096 was
-    too aggressive — truncated research_analyst's JSON (Phase Q observed
-    5.2K out on that step alone). 8192 is calibrated to 3× the largest
-    schema-valid artifact while still bounding the 31K verbose runaway
-    observed on the telegram step in Phase Q v1."""
-    assert OllamaProvider.DEFAULT_MAX_TOKENS == 8192
+def test_ollama_provider_max_tokens_safe_upper_bound() -> None:
+    """Phase Q final calibration: don't cap Kimi's verbose-draft output.
+    32K is a safe upper bound that fits ~96K Russian chars — leaves
+    room for any conceivable artifact + internal draft scratch. The
+    real bound is timeout, not tokens."""
+    assert OllamaProvider.DEFAULT_MAX_TOKENS == 32000
 
 
 def test_ollama_provider_accepts_explicit_overrides() -> None:
