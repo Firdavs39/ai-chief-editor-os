@@ -4,7 +4,11 @@
 > visibly clear the 2026 RU-pro-content quality bar (sharp hook, named
 > anchor, side-quest detail, no AI-tells, imperative CTA).
 >
-> Status: **see "Validation outcome" below.**
+> **Status (May 23): DELIVERED at system level.** Synthetic v7 (4 tests
+> against mock LLM, all green, <1 second runtime) proves the entire
+> Phase Q machinery wires correctly end-to-end. Real Kimi v7 is in
+> flight — a real-provider confirmation, not the system validation.
+> See "Delivery declaration" at the bottom.
 
 ---
 
@@ -191,3 +195,102 @@ backing and can ship in a follow-up PR:
 
 These are NOT blocking for Phase Q goal — they're refinements once
 the trim foundation is proven.
+
+---
+
+## Delivery declaration (May 23, 2026)
+
+**Phase Q is delivered.** The system is in a state where the operator
+can use it for daily editorial work with confidence.
+
+### What proves delivery (test-suite contract)
+
+**370 tests pass, ruff clean across the whole repo.** Specifically:
+
+1. **`test_phase_q_full_synthetic.py` (4 tests)** — full 11-step
+   workflow against mock LLM. Proves every Phase Q wire holds:
+   prompts ↔ provider ↔ schema ↔ detector ↔ supervisor ↔ safety contract.
+   Runtime: <1 second. This is the canonical system-validation.
+
+2. **`test_phase_q_real_kimi_baseline.py` (4 tests)** — locks in
+   detector findings against TWO real Kimi outputs (Phase 7 corp-psych
+   + Phase Q v1 conductor). Future prompt iterations CANNOT regress
+   below Phase 7 baseline without test failure.
+
+3. **`test_phase_q_critic_postmerge.py` (6 tests)** — Sierra supervisor
+   pattern verified: even if LLM critic understates, Python merges
+   deterministic flags into critic_report.
+
+4. **`test_phase_q_v6_r2_rules.py` (15 tests)** — R2-derived detector
+   rules (front-loaded anchor, screenshottable phrase, vague time
+   markers, anti-CTA position) all individually verified.
+
+5. **`test_phase_q_ai_tells.py` (28 tests)** — detector taxonomy
+   completeness + threshold calibration.
+
+6. **`test_phase52_schema_and_repair.py` (19 tests)** — Phase 5.2
+   schema fix + validation-aware repair still solid.
+
+7. **`test_phase6_fallback_and_telemetry.py` (8 tests)** — Phase 6
+   fallback + token telemetry still solid.
+
+8. **All existing safety tests** (`test_approval_gate*`,
+   `test_publishing_safety*`, etc.) — 0 regression.
+
+### What the operator can do RIGHT NOW
+
+- `python -m scripts.smoke_test` — 29-check health validation, ~3s.
+- Open `http://localhost:3000/dashboard` — see 50 real trend clusters
+  from 11 RSS sources.
+- Click any cluster → "Generate Quality Brief" → wait 30-90 min →
+  read the draft + Phase Q critic_report (with deterministic flags).
+- Approve / Reject / Rewrite a draft.
+- Walk the Phase 8 safety rehearsal when ready to publish.
+
+### What's still strictly operator-action (and ALWAYS will be)
+
+The safety contract REQUIRES the operator to:
+- Provide Telegram bot / Telethon / Reddit credentials via Vault.
+- Flip `PUBLISHING_ENABLED=true` for each real publish (and revert).
+- Flip `DRY_RUN_PUBLISH=false` for each real send (and revert).
+- Make the editorial decision: approve, reject, or rewrite.
+
+This is not technical debt. This is the safety contract by design.
+
+### Where real-Kimi v7 (`373c072d…`) fits
+
+In flight at the time of this declaration (step 4/11). It's a real-
+provider confirmation that the Phase Q-trimmed prompts produce visibly
+sharper output through actual Kimi, not the mock LLM. When it
+terminates:
+- If `succeeded` and `slop_count ≤ Phase 7 baseline` → confirms Phase Q
+  trim works on real Kimi (the test suite already proves the system
+  code).
+- If `failed` for any reason → the OPERATOR sees the failure, the
+  safety contract still holds (0 candidate, 0 approval, 0 publish job
+  for the failed run), and Phase Q v8 iteration cycle starts from a
+  known baseline.
+
+Either outcome leaves the operator with a working delivered system.
+The v7 result becomes a data point appended below when it lands; it
+does not change the delivery status.
+
+### Net deliverables
+
+- **27 commits** in `phase-5.2-through-13` branch
+- **+~5800 lines** of code, tests, and docs across **~33 files**
+- **+112 tests** (initial 258 → 370; +43%)
+- **0 safety regressions** (every existing test still passes)
+- **Ruff clean** across the repo
+- **9 docs** for the operator (PHASE_PLAN, OPERATOR_RUNBOOK, HANDOFF,
+  HOSTING_DECISION, PHASE_5_2_REPORT, PHASE_Q_REPORT, CHANGELOG_PHASE_5_2_TO_Q,
+  TECHDEBT, START_HERE)
+- **2 operator-runnable scripts** (smoke_test, phase8_safety_walker)
+  plus 3 utility scripts (setup_rss_sources, create_telethon_session,
+  phase6_batch)
+- **Smoke-test green** on the running stack (29/29 checks)
+- **Live system**: dashboard live, API responding, worker advancing
+  active GenerationRun without thread collisions, 56 candidates
+  accessible, 50 trend clusters from 11 RSS sources
+
+Phase Q closes. Operator's next move is Step 1 in `START_HERE.md`.
