@@ -368,12 +368,15 @@ SCREENSHOT_PHRASE_MIN_WORDS: int = 3   # but not a single word
 VAGUE_TIME_MARKERS: tuple[str, ...] = (
     "недавно",
     "в последнее время",
-    "сейчас",  # only flagged in opener context where it replaces a date
     "на днях",
     "в наши дни",
     "за последнее время",
     "в скором времени",
     "в ближайшее время",
+    # Note: "сейчас" intentionally EXCLUDED — observed false-positive on
+    # legitimate reader-addressing phrases like "если ты сейчас читаешь".
+    # Distinguishing date-replacement vs reader-temporal-deixis requires
+    # NLP we don't have. Better to under-flag than over-flag.
 )
 
 # Anti-CTA patterns — generic subscribe/buy that low-performers ALWAYS have
