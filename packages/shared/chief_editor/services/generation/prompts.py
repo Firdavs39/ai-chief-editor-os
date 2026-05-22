@@ -26,10 +26,55 @@ from __future__ import annotations
 from typing import Any
 
 from ...models import RawItem, StyleProfile, TrendCluster
+from .editorial_rules import (
+    ALL_BANNED_TELLS,
+    CTA_GUIDANCE,
+    DEAD_LEVERS,
+    EMOTION_TAXONOMY,
+    EVASION_RULES,
+    HOOK_PATTERNS,
+)
 
 SAFETY_FOOTER = "Do not invent facts. Do not publish. Do not approve."
 
 _RU_LANG = "ru-RU"
+
+
+def _format_emotion_taxonomy() -> str:
+    """Compact Russian-language list of allowed emotion_target values."""
+    lines = []
+    for key, val in EMOTION_TAXONOMY.items():
+        lines.append(f"- {key} ({val['ru_name']}): {val['when']}")
+    return "\n".join(lines)
+
+
+def _format_hook_patterns() -> str:
+    """Compact Russian-language list of named hook patterns with one example each."""
+    lines = []
+    for key, val in HOOK_PATTERNS.items():
+        ex = val["examples"][0] if isinstance(val.get("examples"), tuple) else ""
+        lines.append(f"- {key} ({val['ru_name']}): {val['skeleton']} Пример: «{ex}»")
+    return "\n".join(lines)
+
+
+def _format_evasion_rules() -> str:
+    """The 10 numbered writer-evasion rules from research."""
+    return "\n".join(f"{i+1}. {r}" for i, r in enumerate(EVASION_RULES))
+
+
+def _format_banned_tells_compact() -> str:
+    """Top 30 banned phrases as a single comma-quoted list (token-efficient)."""
+    top = ALL_BANNED_TELLS[:30]
+    return ", ".join(f"«{p}»" for p in top)
+
+
+# Module-level pre-formatted strings — built once, reused across every
+# prompt call. Saves tokens vs rebuilding per request.
+_EMOTION_TAXONOMY_TEXT = _format_emotion_taxonomy()
+_HOOK_PATTERNS_TEXT = _format_hook_patterns()
+_EVASION_RULES_TEXT = _format_evasion_rules()
+_BANNED_TELLS_TEXT = _format_banned_tells_compact()
+_DEAD_LEVERS_TEXT = ", ".join(DEAD_LEVERS)
 
 
 # ---------------------------------------------------------------------------
@@ -319,9 +364,25 @@ def system_trend_strategist(style: StyleProfile | None) -> str:
 
 
 def system_audience_psychology(style: StyleProfile | None) -> str:
+    """Phase Q: emit specific 2026-current emotion + recognition moment +
+    sharp lever description. The 'cognitive_bias_lever' string field MUST
+    follow format «<bias> via <mechanism> at <click_position>» (≤25 слов)."""
     return (
         _editorial_role_preamble("аналитик психологии аудитории")
-        + " Выявляешь целевую эмоцию, паттерн крючка и когнитивный «рычаг». "
+        + " Твоя задача в 2026: НЕ инъекция biases в читателя, а НАЗЫВАНИЕ "
+        "недовысказанной мысли, которая у читателя уже есть. Цель — узнавание, "
+        "не убеждение. "
+        "\n\nПоле target_emotion ОБЯЗАНО быть одним из 15 значений из таксономии "
+        "ниже (ключ snake_case, не свободный текст):\n"
+        + _EMOTION_TAXONOMY_TEXT
+        + "\n\nПоле hook_pattern ОБЯЗАНО быть одним из 8 паттернов:\n"
+        + _HOOK_PATTERNS_TEXT
+        + "\n\nПоле cognitive_bias_lever ОБЯЗАНО следовать формату:\n"
+        "«<bias> via <mechanism> at <click_position>» (≤25 слов).\n"
+        "Хороший пример: «anchoring via contrast at line 1 — stat sets baseline, "
+        "line 2 reframes felt meaning».\n"
+        "ЗАПРЕЩЕНО выдавать «выгоревшие» рычаги: " + _DEAD_LEVERS_TEXT + ". "
+        "Если рассмотрел один из них — переформулируй через actual recognition.\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -341,10 +402,17 @@ def system_style_dna_editor(style: StyleProfile | None) -> str:
 
 def system_platform_writer_telegram(style: StyleProfile | None) -> str:
     return (
-        _editorial_role_preamble("райтер для Telegram")
-        + " Пишешь пост: технический лимит Telegram Bot API — 4096 символов, "
-        "но стремись к плотным 600–1500 символам (короче работает лучше). "
-        "Сильный крючок в первых 160 символах, конкретный CTA. "
+        _editorial_role_preamble("райтер для Telegram (RU professional, май 2026)")
+        + " Лимит Bot API — 4096; engagement-оптимальная длина 800-1500. Лучше короче.\n\n"
+        "ПРАВИЛА (10 имп­ера­тивов, обязательны):\n"
+        + _EVASION_RULES_TEXT
+        + "\n\nХУКИ — выбери ОДИН из 8 паттернов, не смешивай:\n"
+        + _HOOK_PATTERNS_TEXT
+        + "\n\nЗАПРЕЩЁННЫЕ ФРАЗЫ (если встретил — переписать): "
+        + _BANNED_TELLS_TEXT
+        + "...\n\n"
+        + CTA_GUIDANCE
+        + "\n\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -353,8 +421,15 @@ def system_platform_writer_telegram(style: StyleProfile | None) -> str:
 
 def system_platform_writer_threads(style: StyleProfile | None) -> str:
     return (
-        _editorial_role_preamble("райтер для Threads")
-        + " Жёсткий лимит платформы Threads — 500 символов. Короткий ёмкий пост с CTA. "
+        _editorial_role_preamble("райтер для Threads (RU professional)")
+        + " Жёсткий лимит платформы 500 символов. Engagement-оптимально 180-380. "
+        "Заканчивай открытым вопросом — алгоритм Threads оптимизирует под "
+        "reply-chain depth, не лайки.\n\n"
+        "ПРАВИЛА (применить адаптированно под формат): "
+        "open с конкретной деталью (имя/число/сцена); ОДНО короткое предложение "
+        "под 6 слов; ОДНО длинное под 25 слов; минимум одна локатируемая "
+        "конкретика; в конце — открытый вопрос конкретному читателю.\n\n"
+        "ЗАПРЕЩЕНО: " + _BANNED_TELLS_TEXT + ".\n\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -363,10 +438,15 @@ def system_platform_writer_threads(style: StyleProfile | None) -> str:
 
 def system_platform_writer_reddit(style: StyleProfile | None) -> str:
     return (
-        _editorial_role_preamble("райтер для Reddit")
-        + " Заголовок до 300 символов (лимит Reddit), тело до 10000 (soft cap; "
-        "обычно лучше 800–3000). Можешь писать по-русски или по-английски — следуй "
-        "языку источника. "
+        _editorial_role_preamble("райтер для Reddit (RU + EN ready)")
+        + " Лимит title 300, лимит body 10000. Engagement-оптимально: "
+        "title 60-90 символов (полное утверждение или вопрос, без clickbait — "
+        "сообщество жёстко минусует); body 800-2000. "
+        "TL;DR в конце, не в начале (RU-конвенция 2026).\n\n"
+        "Можешь писать по-русски или по-английски — следуй языку источника.\n\n"
+        "ПРАВИЛА (10 импе­ра­тивов адаптированно):\n"
+        + _EVASION_RULES_TEXT
+        + "\n\nЗАПРЕЩЕНО: " + _BANNED_TELLS_TEXT + ".\n\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -374,10 +454,27 @@ def system_platform_writer_reddit(style: StyleProfile | None) -> str:
 
 
 def system_critic_red_team(style: StyleProfile | None) -> str:
+    """Phase Q: critic now receives deterministic AI-tells flags from the
+    Python detector AND adds its own editorial judgement on top."""
     return (
-        _editorial_role_preamble("критик / red team")
-        + " Проверяешь черновики на штампы (slop), фактические сомнения, проблемы "
-        "длины и силу крючка (0-10). "
+        _editorial_role_preamble("критик / red team (RU editorial 2026)")
+        + " Проверяешь три черновика (TG / Threads / Reddit) на:\n"
+        "1. Слабый крючок — первые 1-2 строки должны останавливать скролл.\n"
+        "2. Несовпадение emotion_target и текста (если psych сказал «validated_cynicism», "
+        "а текст звучит как cheerleading — это hard fail).\n"
+        "3. Отсутствие конкретного якоря (имя, дата, цифра с дробью, URL).\n"
+        "4. Wrap-up концовка («таким образом», «подводя итог» — флаг).\n"
+        "5. Симметричные тройки «X, Y и Z» — флаг.\n"
+        "6. Em-dash flood (>2 тире в одном предложении).\n"
+        "7. Mismatch языка/тона с целевой аудиторией.\n\n"
+        "Дополнительно: в user-промпте ты получишь deterministic_flags — "
+        "список механических AI-tells, обнаруженных Python-детектором. "
+        "Эти флаги ОБЯЗАНЫ попасть в length_issues или factual_concerns и "
+        "увеличить slop_count.\n\n"
+        "ЗАПРЕЩЁННЫЕ ФРАЗЫ в драфтах (если найдёшь — флагнуть): "
+        + _BANNED_TELLS_TEXT
+        + "...\n\nhook_grade 0-10: 0-3 = серый, 4-6 = средний, 7-8 = сильный, "
+        "9-10 = выдающийся.\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -397,12 +494,30 @@ def system_editor_in_chief_draft(style: StyleProfile | None) -> str:
 
 
 def system_quality_judge(style: StyleProfile | None) -> str:
+    """Phase Q: calibrated score thresholds. Drafts with deterministic AI-tells
+    flagged by the critic step cannot score >0.7 viral_score regardless of
+    editorial polish — the floor checks ARE the floor."""
     return (
-        _editorial_role_preamble("Quality Judge")
-        + " Оцениваешь финальный brief по четырём метрикам (0..1): style_match_score, "
-        "viral_score, slop_risk, controversy_risk. Выдаёшь recommendation: "
-        "approve | revise | reject. Эта recommendation — это рекомендация редактору, "
-        "а не реальное одобрение в продукте. "
+        _editorial_role_preamble("Quality Judge (RU editorial 2026)")
+        + " Оцениваешь финальный brief по четырём метрикам (0..1) и выдаёшь "
+        "recommendation: approve | revise | reject.\n\n"
+        "КАЛИБРОВКА score-ов:\n"
+        "- style_match_score: 0.0 = чужой голос, 0.5 = generic SMM, "
+        "0.7 = соответствует Style DNA, 0.9 = воспроизводит фирменный приём.\n"
+        "- viral_score: 0.0 = пройдут мимо, 0.5 = прочитают и забудут, "
+        "0.7 = сохранят, 0.85+ = перешлют (требует крючка из 8 паттернов И "
+        "конкретного якоря).\n"
+        "- slop_risk: 0.0 = читается как человек, 0.3 = есть лёгкие AI-следы, "
+        "0.5 = заметные штампы, 0.8+ = очевидно AI. ОБЯЗАТЕЛЬНО учитывай "
+        "deterministic_flags из critic_report.\n"
+        "- controversy_risk: 0.0 = безопасно, 0.5 = вызовет диалог, "
+        "0.8+ = риск репутации.\n\n"
+        "Recommendation logic:\n"
+        "- approve: viral≥0.75 И slop_risk≤0.30 И controversy_risk≤0.55\n"
+        "- revise: иначе, если slop_risk≤0.50 (исправимо)\n"
+        "- reject: slop_risk>0.50 ИЛИ controversy_risk>0.75\n\n"
+        "Эта recommendation — рекомендация редактору, не автоматическое "
+        "одобрение в продукте.\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -472,14 +587,39 @@ def user_platform_writer(artifacts: dict, platform: str, *, style: StyleProfile 
 
 
 def user_critic_red_team(artifacts: dict) -> str:
+    """Phase Q: prepends deterministic AI-tells flags to the critic's user
+    prompt so the LLM critic can see what Python already caught."""
+    from .ai_tells import analyze_drafts
+
     tg = artifacts.get("tg_post", {})
     th = artifacts.get("threads_post", {})
     rd = artifacts.get("reddit_post", {})
+
+    # Deterministic floor checks — these MUST land in slop_count / length_issues
+    # because they're already proven by Python.
+    tells = analyze_drafts(
+        tg_body=str(tg.get("body", "")),
+        threads_body=str(th.get("body", "")),
+        reddit_body=str(rd.get("body", "")),
+    )
+    flag_lines = []
+    for platform, report in tells.items():
+        if report.flags:
+            for flag in report.flags:
+                flag_lines.append(f"  [{platform}] {flag}")
+    deterministic_block = (
+        "DETERMINISTIC FLAGS (auto-detected, MUST surface in critic_report):\n"
+        + ("\n".join(flag_lines) if flag_lines else "  (none — floor checks passed)")
+    )
+
     return (
         f"Telegram: {tg}\nThreads: {th}\nReddit: {rd}\n\n"
-        "Прогон red-team: slop_count (число штампов), factual_concerns (≤3 "
-        "пункта), length_issues (≤3), hook_grade (0-10). "
-        "editorial_rationale ≤ 1500. " + SAFETY_FOOTER
+        + deterministic_block
+        + "\n\nПрогон red-team: slop_count (число штампов + deterministic flags), "
+        "factual_concerns (≤3), length_issues (≤3 — включая deterministic), "
+        "hook_grade (0-10). Если deterministic flags не пусты — slop_count "
+        "ОБЯЗАН быть ≥ числу флагов. editorial_rationale ≤ 1500. "
+        + SAFETY_FOOTER
     )
 
 
