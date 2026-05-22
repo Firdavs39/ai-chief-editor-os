@@ -20,23 +20,17 @@ this doc tells you what to click.
 
 ## Step 0 — Verify the stack is up (≤30 sec)
 
-Three processes need to be alive:
+**One command does it all:**
 
 ```bash
-# API on :8000
-curl -sS http://localhost:8000/status
-# Expect: {"ok":true,"app_env":"prod","mock_mode":false,"live_mode":true,...}
-
-# Worker (no exposed port; check logs)
-ls -la .phase52/worker_qv7_final.log 2>&1
-# Expect: a file with recent timestamps
-
-# Frontend on :3000
-curl -sS -o /dev/null -w "%{http_code}\n" http://localhost:3000/dashboard
-# Expect: 200
+PYTHONPATH="packages/shared;apps/api;apps/worker" python -m scripts.smoke_test
 ```
 
-If any is down, start it:
+29 checks across API / dashboard / data / detector / Vault. If you
+see `Smoke test: 29 passed, 0 failed, 0 warned -> ALL GREEN`, you're
+good. Skip to Step 1.
+
+If any check FAILS, start the missing process:
 
 ```bash
 # API
@@ -48,6 +42,9 @@ PYTHONPATH="packages/shared;apps/api;apps/worker" python -m worker.main
 # Frontend
 cd apps/web && NEXT_PUBLIC_API_URL=http://localhost:8000 pnpm dev
 ```
+
+Then re-run the smoke test. All-green is the precondition for daily
+editorial work.
 
 ---
 
