@@ -59,6 +59,12 @@ class OllamaProvider(LLMProvider):
     # the failure sooner.
     DEFAULT_TIMEOUT_SECONDS = 900.0
     DEFAULT_MAX_RETRIES = 1
+    # Phase Q follow-up: cap output tokens so Kimi can't go verbose past
+    # the schema's reach. Phase 7 ran ~7K tokens/step on average; Phase Q
+    # ran ~14K tokens/step (2× verbose) and one step timed out at the
+    # Reddit 10K-char artifact. 4096 tokens is ~12-16K Russian chars —
+    # 2× headroom over the largest artifact (final_brief).
+    DEFAULT_MAX_TOKENS = 4096
 
     def __init__(
         self,
@@ -67,6 +73,7 @@ class OllamaProvider(LLMProvider):
         model: str = "kimi-k2.6:cloud",
         timeout_seconds: float | None = None,
         max_retries: int | None = None,
+        max_tokens: int | None = None,
     ) -> None:
         super().__init__()
         if not base_url:
@@ -102,6 +109,11 @@ class OllamaProvider(LLMProvider):
         self._model = model
         self._raw_base_url = base_url
         self.last_model = model
+        self._max_tokens = (
+            max_tokens
+            if max_tokens is not None
+            else self.DEFAULT_MAX_TOKENS
+        )
 
     # ------------------------------------------------------------------ JSON
 
@@ -126,6 +138,7 @@ class OllamaProvider(LLMProvider):
             response = self._client.chat.completions.create(
                 model=self._model,
                 temperature=temperature,
+                max_tokens=self._max_tokens,
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": base_user + extra},
@@ -173,6 +186,7 @@ class OllamaProvider(LLMProvider):
         response = self._client.chat.completions.create(
             model=self._model,
             temperature=0.6,
+            max_tokens=self._max_tokens,
             messages=[
                 {
                     "role": "system",

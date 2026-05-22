@@ -307,21 +307,37 @@ def test_ollama_provider_uses_phase5_2_timeout_defaults() -> None:
     assert OllamaProvider.DEFAULT_MAX_RETRIES == 1
 
 
-def test_ollama_provider_accepts_explicit_timeout_override() -> None:
-    """Operators can tune timeout per environment without monkey-patching
-    the class default."""
+def test_ollama_provider_caps_max_tokens_post_phase_q() -> None:
+    """Phase Q follow-up: cap output at 4096 tokens. Without this, Kimi
+    can run unbounded (Phase Q validation produced 31K output tokens on
+    a tg_post step that only needs ~1500 tokens for the largest valid
+    artifact). The cap prevents API timeouts on the Reddit step."""
+    assert OllamaProvider.DEFAULT_MAX_TOKENS == 4096
+
+
+def test_ollama_provider_accepts_explicit_overrides() -> None:
+    """Operators can tune timeout/retries/max_tokens per environment
+    without monkey-patching the class defaults."""
     p = OllamaProvider(
         base_url="https://ollama.com",
         api_key="ollama_FAKE",
         model="kimi-test",
         timeout_seconds=120.0,
         max_retries=0,
+        max_tokens=1024,
     )
-    # The OpenAI SDK exposes timeout as `timeout` on the client instance
-    # (https-x._client). We assert the underlying client got the value
-    # we passed.
     assert p._client.timeout == 120.0
     assert p._client.max_retries == 0
+    assert p._max_tokens == 1024
+
+
+def test_ollama_provider_passes_max_tokens_to_api_call() -> None:
+    """The configured max_tokens reaches every chat.completions.create call."""
+    p = _ollama(['{"ok": true}'])
+    p._max_tokens = 2048
+    p.complete_json("sys", "user", {"type": "object"})
+    sent = p._client.chat.completions.calls[0]
+    assert sent["max_tokens"] == 2048
 
 
 # ---------------------------------------------------------------------------
