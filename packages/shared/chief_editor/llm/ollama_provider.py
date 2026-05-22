@@ -52,6 +52,7 @@ class OllamaProvider(LLMProvider):
         api_key: str,
         model: str = "kimi-k2.6:cloud",
     ) -> None:
+        super().__init__()
         if not base_url:
             raise ValueError("OllamaProvider requires a base URL")
         if not api_key:
@@ -76,6 +77,7 @@ class OllamaProvider(LLMProvider):
         )
         self._model = model
         self._raw_base_url = base_url
+        self.last_model = model
 
     # ------------------------------------------------------------------ JSON
 
@@ -88,6 +90,7 @@ class OllamaProvider(LLMProvider):
         temperature: float = 0.7,
     ) -> dict[str, Any]:
         """Ask Kimi for one strict-JSON answer. Retry once on parse failure."""
+        self._reset_usage()
         base_user = (
             f"{user}\n\n"
             f"Return STRICT JSON only, matching this schema:\n"
@@ -103,6 +106,12 @@ class OllamaProvider(LLMProvider):
                     {"role": "system", "content": system},
                     {"role": "user", "content": base_user + extra},
                 ],
+            )
+            usage = getattr(response, "usage", None)
+            self._record_usage(
+                input_tokens=getattr(usage, "prompt_tokens", None),
+                output_tokens=getattr(usage, "completion_tokens", None),
+                model=self._model,
             )
             return response.choices[0].message.content or ""
 

@@ -8,6 +8,7 @@ tests can rely on it.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from typing import Any
 
@@ -82,6 +83,10 @@ def _de_slop(text: str) -> str:
 class MockLLMProvider(LLMProvider):
     name = "mock"
 
+    def __init__(self) -> None:
+        super().__init__()
+        self.last_model = "mock"
+
     def complete_json(
         self,
         system: str,
@@ -90,6 +95,11 @@ class MockLLMProvider(LLMProvider):
         *,
         temperature: float = 0.7,
     ) -> dict[str, Any]:
+        # Mock telemetry: approximate tokens as char-count / 4 so the
+        # cost-tracking surface has something to read in tests. Real
+        # providers report exact counts.
+        self._reset_usage()
+        approx_in = (len(system) + len(user)) // 4
         # Phase 2 dispatch: detect the workflow step from the schema's
         # required-key signature and return a deterministic per-step payload.
         # Falls through to the legacy 13-field response when the schema does
@@ -97,6 +107,10 @@ class MockLLMProvider(LLMProvider):
         # behavior and the existing test contract).
         step_response = self._step_response_for_schema(schema, user, system)
         if step_response is not None:
+            approx_out = len(json.dumps(step_response, ensure_ascii=False)) // 4
+            self._record_usage(
+                input_tokens=approx_in, output_tokens=approx_out, model="mock"
+            )
             return step_response
 
         seed = _seed_for(user + system)
@@ -158,6 +172,10 @@ class MockLLMProvider(LLMProvider):
                 "approve" if slop < 0.25 and viral > 0.5 else "revise"
             ),
         }
+        approx_out = len(json.dumps(result, ensure_ascii=False)) // 4
+        self._record_usage(
+            input_tokens=approx_in, output_tokens=approx_out, model="mock"
+        )
         return result
 
     # ------------------------------------------------------------------

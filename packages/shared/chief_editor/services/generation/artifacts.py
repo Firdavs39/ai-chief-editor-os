@@ -3,7 +3,14 @@
 Each step produces one artifact with a canonical name and a typed payload.
 Validation guarantees:
 - Schema-shaped output (catches LLM responses that don't match the prompt).
-- Bounded `editorial_rationale` (≤ 240 chars, user-safe).
+- Bounded `editorial_rationale` (≤ 1500 chars, user-safe). Phase 5.2 raised
+  the limit from 240 — the original cap was UI-driven and forced the model
+  into truncated reasoning, which caused Phase 5.1's failure on Kimi.
+- Content-field limits match real platform API limits, not arbitrary numbers
+  (TG body 4096 = Telegram Bot API, Threads body 500 = Threads platform,
+  Reddit body 10000 = Reddit body soft cap, Reddit title 300 = Reddit hard
+  limit). A draft that passes schema validation MUST be technically
+  publishable on each platform.
 - NO raw model text / prompts / completions are persisted — only the parsed
   pydantic dump of the validated payload reaches the DB.
 
@@ -45,9 +52,17 @@ ARTIFACT_NAMES = {
 
 
 class _ArtifactBase(BaseModel):
-    """Every step that needs an explanation includes editorial_rationale FIRST."""
+    """Every step that needs an explanation includes editorial_rationale FIRST.
 
-    editorial_rationale: str = Field(default="", max_length=240)
+    Limit raised from 240 → 1500 in Phase 5.2 after the original cap caused
+    Kimi to fail audience_psychology_analyst (the model wrote an honest
+    multi-sentence rationale that exceeded 240 chars; the schema rejected it
+    rather than the cap revealing a problem). 1500 is large enough for a
+    short public editorial paragraph and small enough that hidden
+    chain-of-thought won't fit.
+    """
+
+    editorial_rationale: str = Field(default="", max_length=1500)
 
 
 class ResearchBriefArtifact(_ArtifactBase):
@@ -75,19 +90,26 @@ class VoiceBriefArtifact(_ArtifactBase):
 
 
 class TelegramPostArtifact(_ArtifactBase):
-    body: str = Field(default="", max_length=1024)
-    hook: str = Field(default="", max_length=80)
+    # 4096 = Telegram Bot API sendMessage limit. A draft that passes schema
+    # MUST be publishable; shorter is editorially preferred (the critic / UI
+    # advises on style), but the schema only enforces what's technically
+    # sendable.
+    body: str = Field(default="", max_length=4096)
+    hook: str = Field(default="", max_length=160)
     cta: str = ""
 
 
 class ThreadsPostArtifact(_ArtifactBase):
+    # 500 = Threads platform character limit (hard).
     body: str = Field(default="", max_length=500)
     cta: str = ""
 
 
 class RedditPostArtifact(_ArtifactBase):
+    # 300 = Reddit title hard limit. 10000 = soft cap on Reddit selftext
+    # (platform allows 40k but engagement collapses past ~10k).
     title: str = Field(default="", max_length=300)
-    body: str = Field(default="", max_length=1500)
+    body: str = Field(default="", max_length=10000)
     cta: str = ""
 
 
@@ -99,13 +121,18 @@ class CriticReportArtifact(_ArtifactBase):
 
 
 class FinalBriefArtifact(_ArtifactBase):
+    # Metadata fields (source_summary / why_it_matters / psychology_hook) are
+    # operator-facing editorial commentary; their 400/300/200 caps were
+    # over-tight. 1500-2000 chars = one screen in the UI card.
+    # Content fields (final_*) match the per-platform artifact limits above
+    # so the schema-vs-publish contract holds.
     topic: str
-    source_summary: str = Field(default="", max_length=400)
-    why_it_matters: str = Field(default="", max_length=300)
-    psychology_hook: str = Field(default="", max_length=200)
-    final_tg: str = Field(default="", max_length=1024)
+    source_summary: str = Field(default="", max_length=2000)
+    why_it_matters: str = Field(default="", max_length=1500)
+    psychology_hook: str = Field(default="", max_length=1500)
+    final_tg: str = Field(default="", max_length=4096)
     final_threads: str = Field(default="", max_length=500)
-    final_reddit: str = Field(default="", max_length=1500)
+    final_reddit: str = Field(default="", max_length=10000)
     cta: str = ""
 
 

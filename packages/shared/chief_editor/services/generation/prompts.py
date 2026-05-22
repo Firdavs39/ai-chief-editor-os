@@ -11,7 +11,12 @@ Design rules (per QUALITY_EDITORIAL_WORKFLOW_PLAN.md §9):
   step is the documented exception at 9 fields because it assembles, not
   generates.
 - `editorial_rationale` appears FIRST when a short user-safe explanation is
-  needed (≤ 240 chars, safe to render in UI; NOT private chain-of-thought).
+  needed (≤ 1500 chars, safe to render in UI; NOT private chain-of-thought).
+  Phase 5.2 raised this cap from 240 because Kimi K2.6 wrote honest
+  multi-sentence rationales that legitimately exceeded the old limit.
+- Content-field maxLength values mirror real per-platform API limits
+  (TG=4096, Threads=500, Reddit body=10000, Reddit title=300). The schema
+  must NOT be more generous than the platform itself.
 - Prompts never reference secrets, env-var names, the Vault, or any
   publishing surface.
 """
@@ -98,7 +103,7 @@ SCHEMA_RESEARCH_BRIEF: dict[str, Any] = {
         "gaps",
     ],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "fact_bullets": {
             "type": "array",
             "items": {"type": "string"},
@@ -127,7 +132,7 @@ SCHEMA_ANGLE: dict[str, Any] = {
         "why_now",
     ],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "primary_angle": {"type": "string"},
         "contrarian_take": {"type": "string"},
         "why_now": {"type": "string"},
@@ -143,7 +148,7 @@ SCHEMA_PSYCH: dict[str, Any] = {
         "cognitive_bias_lever",
     ],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "target_emotion": {"type": "string"},
         "hook_pattern": {"type": "string"},
         "cognitive_bias_lever": {"type": "string"},
@@ -159,7 +164,7 @@ SCHEMA_VOICE_BRIEF: dict[str, Any] = {
         "must_avoid",
     ],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "sentence_length_target": {"type": "string"},
         "vocab_lane": {"type": "string"},
         "must_avoid": {
@@ -174,9 +179,9 @@ SCHEMA_TG_POST: dict[str, Any] = {
     "type": "object",
     "required": ["editorial_rationale", "body", "hook", "cta"],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
-        "body": {"type": "string", "maxLength": 1024},
-        "hook": {"type": "string", "maxLength": 80},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
+        "body": {"type": "string", "maxLength": 4096},
+        "hook": {"type": "string", "maxLength": 160},
         "cta": {"type": "string"},
     },
 }
@@ -185,7 +190,7 @@ SCHEMA_THREADS_POST: dict[str, Any] = {
     "type": "object",
     "required": ["editorial_rationale", "body", "cta"],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "body": {"type": "string", "maxLength": 500},
         "cta": {"type": "string"},
     },
@@ -195,9 +200,9 @@ SCHEMA_REDDIT_POST: dict[str, Any] = {
     "type": "object",
     "required": ["editorial_rationale", "title", "body", "cta"],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "title": {"type": "string", "maxLength": 300},
-        "body": {"type": "string", "maxLength": 1500},
+        "body": {"type": "string", "maxLength": 10000},
         "cta": {"type": "string"},
     },
 }
@@ -212,7 +217,7 @@ SCHEMA_CRITIC_REPORT: dict[str, Any] = {
         "hook_grade",
     ],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "slop_count": {"type": "integer", "minimum": 0},
         "factual_concerns": {
             "type": "array",
@@ -244,14 +249,14 @@ SCHEMA_FINAL_BRIEF: dict[str, Any] = {
         "cta",
     ],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "topic": {"type": "string"},
-        "source_summary": {"type": "string", "maxLength": 400},
-        "why_it_matters": {"type": "string", "maxLength": 300},
-        "psychology_hook": {"type": "string", "maxLength": 200},
-        "final_tg": {"type": "string", "maxLength": 1024},
+        "source_summary": {"type": "string", "maxLength": 2000},
+        "why_it_matters": {"type": "string", "maxLength": 1500},
+        "psychology_hook": {"type": "string", "maxLength": 1500},
+        "final_tg": {"type": "string", "maxLength": 4096},
         "final_threads": {"type": "string", "maxLength": 500},
-        "final_reddit": {"type": "string", "maxLength": 1500},
+        "final_reddit": {"type": "string", "maxLength": 10000},
         "cta": {"type": "string"},
     },
 }
@@ -267,7 +272,7 @@ SCHEMA_QUALITY_REPORT: dict[str, Any] = {
         "recommendation",
     ],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "style_match_score": {"type": "number", "minimum": 0, "maximum": 1},
         "viral_score": {"type": "number", "minimum": 0, "maximum": 1},
         "slop_risk": {"type": "number", "minimum": 0, "maximum": 1},
@@ -285,12 +290,19 @@ SCHEMA_QUALITY_REPORT: dict[str, Any] = {
 # ---------------------------------------------------------------------------
 
 
+_RATIONALE_RULE = (
+    "Поле editorial_rationale — короткий публичный editorial summary "
+    "(≤1500 символов, обычно 200–800). Это объяснение твоего выбора для "
+    "редактора, безопасное для показа в UI. НЕ chain-of-thought, не пересказ "
+    "контента, не служебные размышления."
+)
+
+
 def system_research_analyst(style: StyleProfile | None) -> str:
     return (
         _editorial_role_preamble("главный аналитик-исследователь")
         + " Анализируешь сигналы из источников, выделяешь факты, источники и пробелы. "
-        "Заполни поле editorial_rationale (≤240 символов) — короткое объяснение, "
-        "которое можно показать редактору в UI; никаких внутренних рассуждений."
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
@@ -300,7 +312,7 @@ def system_trend_strategist(style: StyleProfile | None) -> str:
     return (
         _editorial_role_preamble("стратег по трендам")
         + " На основе фактов формулируешь основной угол, контр-тейк и причину «почему сейчас». "
-        "editorial_rationale — краткое объяснение выбора, безопасно для UI."
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
@@ -310,7 +322,7 @@ def system_audience_psychology(style: StyleProfile | None) -> str:
     return (
         _editorial_role_preamble("аналитик психологии аудитории")
         + " Выявляешь целевую эмоцию, паттерн крючка и когнитивный «рычаг». "
-        "editorial_rationale — UI-safe резюме."
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
@@ -320,7 +332,8 @@ def system_style_dna_editor(style: StyleProfile | None) -> str:
     return (
         _editorial_role_preamble("редактор Style DNA")
         + " Переводишь психологические рекомендации в правила голоса: целевая длина "
-        "предложений, словарная полоса, чего избегать. editorial_rationale — UI-safe."
+        "предложений, словарная полоса, чего избегать. "
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
@@ -329,8 +342,10 @@ def system_style_dna_editor(style: StyleProfile | None) -> str:
 def system_platform_writer_telegram(style: StyleProfile | None) -> str:
     return (
         _editorial_role_preamble("райтер для Telegram")
-        + " Пишешь пост ≤ 1024 символа, с сильным крючком в первых 80 символах и "
-        "конкретным CTA. editorial_rationale — UI-safe объяснение выбора крючка."
+        + " Пишешь пост: технический лимит Telegram Bot API — 4096 символов, "
+        "но стремись к плотным 600–1500 символам (короче работает лучше). "
+        "Сильный крючок в первых 160 символах, конкретный CTA. "
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
@@ -339,8 +354,8 @@ def system_platform_writer_telegram(style: StyleProfile | None) -> str:
 def system_platform_writer_threads(style: StyleProfile | None) -> str:
     return (
         _editorial_role_preamble("райтер для Threads")
-        + " Пишешь короткий пост ≤ 500 символов под Threads, с CTA. "
-        "editorial_rationale — UI-safe."
+        + " Жёсткий лимит платформы Threads — 500 символов. Короткий ёмкий пост с CTA. "
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
@@ -349,9 +364,10 @@ def system_platform_writer_threads(style: StyleProfile | None) -> str:
 def system_platform_writer_reddit(style: StyleProfile | None) -> str:
     return (
         _editorial_role_preamble("райтер для Reddit")
-        + " Делаешь заголовок (≤300) и тело поста (≤1500) под Reddit-сообщество. "
-        "Можешь писать по-русски или по-английски — следуй языку источника. "
-        "editorial_rationale — UI-safe."
+        + " Заголовок до 300 символов (лимит Reddit), тело до 10000 (soft cap; "
+        "обычно лучше 800–3000). Можешь писать по-русски или по-английски — следуй "
+        "языку источника. "
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
@@ -361,7 +377,8 @@ def system_critic_red_team(style: StyleProfile | None) -> str:
     return (
         _editorial_role_preamble("критик / red team")
         + " Проверяешь черновики на штампы (slop), фактические сомнения, проблемы "
-        "длины и силу крючка (0-10). editorial_rationale — UI-safe резюме."
+        "длины и силу крючка (0-10). "
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
@@ -373,7 +390,7 @@ def system_editor_in_chief_draft(style: StyleProfile | None) -> str:
         + " Собираешь финальный brief: подбираешь лучшие версии Telegram/Threads/Reddit, "
         "формулируешь topic / source_summary / why_it_matters / psychology_hook / cta. "
         "Не публикуешь и не одобряешь — ты только собираешь. "
-        "editorial_rationale — UI-safe."
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
@@ -385,7 +402,8 @@ def system_quality_judge(style: StyleProfile | None) -> str:
         + " Оцениваешь финальный brief по четырём метрикам (0..1): style_match_score, "
         "viral_score, slop_risk, controversy_risk. Выдаёшь recommendation: "
         "approve | revise | reject. Эта recommendation — это рекомендация редактору, "
-        "а не реальное одобрение в продукте. editorial_rationale — UI-safe."
+        "а не реальное одобрение в продукте. "
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
@@ -417,7 +435,7 @@ def user_trend_strategist(
         f"Research brief:\n{rb}\n"
         f"Score breakdown: {score}\n\n"
         "Сформируй: primary_angle (основной угол), contrarian_take (контр-тейк, "
-        "если уместен), why_now (почему сейчас). editorial_rationale ≤ 240 симв. "
+        "если уместен), why_now (почему сейчас). editorial_rationale ≤ 1500 симв. "
         + SAFETY_FOOTER
     )
 
@@ -428,7 +446,7 @@ def user_audience_psychology(artifacts: dict, style: StyleProfile | None) -> str
     return (
         f"Angle: {angle}\nAudience: {audience}\n\n"
         "Определи target_emotion, hook_pattern, cognitive_bias_lever. "
-        "editorial_rationale ≤ 240. " + SAFETY_FOOTER
+        "editorial_rationale ≤ 1500. " + SAFETY_FOOTER
     )
 
 
@@ -438,7 +456,7 @@ def user_style_dna_editor(artifacts: dict, style: StyleProfile | None) -> str:
         f"Psych brief: {psych}\nStyle: {_format_style(style)}\n\n"
         "Дай: sentence_length_target (например, «короткие, 8-14 слов»), "
         "vocab_lane («экспертный, без жаргона»), must_avoid (≤5). "
-        "editorial_rationale ≤ 240. " + SAFETY_FOOTER
+        "editorial_rationale ≤ 1500. " + SAFETY_FOOTER
     )
 
 
@@ -461,7 +479,7 @@ def user_critic_red_team(artifacts: dict) -> str:
         f"Telegram: {tg}\nThreads: {th}\nReddit: {rd}\n\n"
         "Прогон red-team: slop_count (число штампов), factual_concerns (≤3 "
         "пункта), length_issues (≤3), hook_grade (0-10). "
-        "editorial_rationale ≤ 240. " + SAFETY_FOOTER
+        "editorial_rationale ≤ 1500. " + SAFETY_FOOTER
     )
 
 
@@ -477,10 +495,10 @@ def user_editor_in_chief_draft(artifacts: dict) -> str:
         f"Research: {rb}\nAngle: {angle}\nPsych: {psych}\n"
         f"Telegram draft: {tg}\nThreads draft: {th}\nReddit draft: {rd}\n"
         f"Critic report: {critic}\n\n"
-        "Собери final_brief: topic, source_summary (≤400), why_it_matters (≤300), "
-        "psychology_hook (≤200), final_tg (≤1024), final_threads (≤500), "
-        "final_reddit (≤1500), cta. Учти замечания критика. "
-        "editorial_rationale ≤ 240. " + SAFETY_FOOTER
+        "Собери final_brief: topic, source_summary (≤2000), why_it_matters (≤1500), "
+        "psychology_hook (≤1500), final_tg (≤4096, цель 600–1500), "
+        "final_threads (≤500), final_reddit (≤10000, цель 800–3000), cta. "
+        "Учти замечания критика. editorial_rationale ≤ 1500. " + SAFETY_FOOTER
     )
 
 
@@ -492,7 +510,7 @@ def user_quality_judge(artifacts: dict) -> str:
         "Оцени: style_match_score, viral_score, slop_risk, controversy_risk "
         "(все в [0, 1]), recommendation ∈ {approve, revise, reject}. "
         "Помни: recommendation — это рекомендация редактору, НЕ автоматическое "
-        "одобрение в продукте. editorial_rationale ≤ 240. " + SAFETY_FOOTER
+        "одобрение в продукте. editorial_rationale ≤ 1500. " + SAFETY_FOOTER
     )
 
 

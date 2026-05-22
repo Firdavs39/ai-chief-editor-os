@@ -12,6 +12,7 @@ class OpenAIProvider(LLMProvider):
     name = "openai"
 
     def __init__(self, api_key: str, model: str = "gpt-4o") -> None:
+        super().__init__()
         try:
             from openai import OpenAI  # type: ignore
         except ImportError as exc:  # pragma: no cover
@@ -19,6 +20,7 @@ class OpenAIProvider(LLMProvider):
 
         self._client = OpenAI(api_key=api_key)
         self._model = model
+        self.last_model = model
 
     def complete_json(
         self,
@@ -28,6 +30,7 @@ class OpenAIProvider(LLMProvider):
         *,
         temperature: float = 0.7,
     ) -> dict[str, Any]:
+        self._reset_usage()
         prompt = (
             f"{user}\n\nReturn STRICT JSON only, matching this schema:\n"
             f"{json.dumps(schema, ensure_ascii=False)}"
@@ -42,6 +45,12 @@ class OpenAIProvider(LLMProvider):
                     {"role": "system", "content": system},
                     {"role": "user", "content": prompt},
                 ],
+            )
+            usage = getattr(response, "usage", None)
+            self._record_usage(
+                input_tokens=getattr(usage, "prompt_tokens", None),
+                output_tokens=getattr(usage, "completion_tokens", None),
+                model=self._model,
             )
             return response.choices[0].message.content or ""
 

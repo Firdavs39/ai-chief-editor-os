@@ -14,6 +14,23 @@ Think Sprout Social / Hootsuite functionality with Linear / Raycast / Vercel pol
 - **Real + mock adapters everywhere.** Works end-to-end with zero external keys; swap in real keys to enable real publishing and collection.
 - **Russian-first generated content.** Demo seed, candidate copy, style DNA, and critic notes are Russian by default. UI labels stay English.
 
+## Phase status (May 2026)
+
+| Phase | Status | What it adds |
+|---|---|---|
+| 0–5 | ✅ shipped | Foundation, polish, Live-Mode readiness, deploy runtime, real LLM (Ollama Kimi K2.6) |
+| 5.1 | ✅ shipped | Reproducibility audit — surfaced editorial_rationale length-overflow on Kimi |
+| 5.2 | ✅ shipped | Schema raised to platform-real limits; validation-aware repair; length observability. 19 new tests. |
+| 6 | ✅ code shipped, ready to run | Reproducibility batch script on Kimi + token telemetry on every step. `LLM_PROVIDER_FALLBACK` setting exists but is dormant by default — **Kimi-only stack**, no second LLM provider on the roadmap. 8 new tests. |
+| 7 | ✅ scripts shipped, awaits REDDIT_*/TELETHON_* creds | RSS+Reddit+Telegram source wiring. 5 AST guards. |
+| 8 | ✅ walker shipped, awaits test channel | Operator-driven safety rehearsal — every gate verified in DB. |
+| 9 | ⏳ operator task | First real publish + 7-day observation |
+| 10 | ✅ scaffold shipped | `/analytics/cost` + price table. 9 new tests. |
+| 11–12 | ✅ scaffolds shipped | Style DNA proposals (no silent mutation) + performance feedback (capped boost). 10 new tests. |
+| 13 | ✅ documented | Hosting decision (see [docs/HOSTING_DECISION.md](docs/HOSTING_DECISION.md)) |
+
+See [docs/PHASE_PLAN.md](docs/PHASE_PLAN.md) for the full roadmap, [docs/HANDOFF.md](docs/HANDOFF.md) for what's done vs operator-action items, and [docs/OPERATOR_RUNBOOK.md](docs/OPERATOR_RUNBOOK.md) for the 4-step publish ritual.
+
 ## Architecture
 
 ```

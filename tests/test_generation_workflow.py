@@ -526,13 +526,35 @@ def test_validate_payload_rejects_unknown_artifact_name() -> None:
         validate_payload("not_a_real_artifact", {})
 
 
-def test_validate_payload_clamps_editorial_rationale_at_240() -> None:
-    too_long = "x" * 300
+def test_validate_payload_accepts_editorial_rationale_up_to_1500() -> None:
+    """Phase 5.2: editorial_rationale cap raised from 240 → 1500.
+
+    240 was a UI-compactness constraint that forced the model into
+    truncated reasoning and caused Phase 5.1's run to fail on a legitimate
+    multi-sentence rationale. 1500 lets the model explain itself honestly
+    while still small enough that hidden chain-of-thought won't fit.
+    """
+    long_but_legal = "x" * 1499
+    payload = validate_payload(
+        "angle",
+        {
+            "editorial_rationale": long_but_legal,
+            "primary_angle": "test",
+            "contrarian_take": "",
+            "why_now": "",
+        },
+    )
+    assert len(payload["editorial_rationale"]) == 1499
+
+
+def test_validate_payload_rejects_editorial_rationale_above_1500() -> None:
+    """Phase 5.2: hard fail at 1500+1 — no silent truncation."""
+    over_limit = "x" * 1501
     with pytest.raises(ValidationError):
         validate_payload(
             "angle",
             {
-                "editorial_rationale": too_long,
+                "editorial_rationale": over_limit,
                 "primary_angle": "test",
                 "contrarian_take": "",
                 "why_now": "",

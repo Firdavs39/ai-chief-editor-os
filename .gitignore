@@ -67,3 +67,9 @@ build/
 *.sqlite3
 
 .vercel
+
+# Local Claude / phase runtime artifacts (poller logs, intermediate JSON
+# dumps, agent worktree state). All local, never committed.
+.claude/worktrees/
+.phase51/
+.phase52/
