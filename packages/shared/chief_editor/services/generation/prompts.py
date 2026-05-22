@@ -27,8 +27,6 @@ from typing import Any
 
 from ...models import RawItem, StyleProfile, TrendCluster
 from .editorial_rules import (
-    ALL_BANNED_TELLS,
-    CTA_GUIDANCE,
     DEAD_LEVERS,
     EMOTION_TAXONOMY,
     EVASION_RULES,
@@ -37,43 +35,52 @@ from .editorial_rules import (
 
 SAFETY_FOOTER = "Do not invent facts. Do not publish. Do not approve."
 
+# Phase Q v4 explicit termination signal — Kimi K2.6 drifts and "thinks
+# out loud" by default; an explicit STOP halves runaway-verbose risk
+# (per Anthropic context-engineering posts + Adam Holter's K2-thinking
+# review, May 2026). Appended to every system prompt at the end.
+_STOP_SIGNAL = (
+    "\n\nВерни строго один JSON-объект по схеме и СТОП. "
+    "Не пиши размышления, не комментируй, не добавляй пояснения после JSON."
+)
+
 _RU_LANG = "ru-RU"
 
 
-def _format_emotion_taxonomy() -> str:
-    """Compact Russian-language list of allowed emotion_target values."""
-    lines = []
-    for key, val in EMOTION_TAXONOMY.items():
-        lines.append(f"- {key} ({val['ru_name']}): {val['when']}")
-    return "\n".join(lines)
+def _format_emotion_taxonomy_compact() -> str:
+    """Phase Q v4 trim: name only, NO per-emotion 'when'/'opener_example'.
+    Kimi knows these patterns conceptually — we just need to constrain
+    the field's vocabulary to the 15 canonical keys."""
+    return ", ".join(EMOTION_TAXONOMY.keys())
 
 
-def _format_hook_patterns() -> str:
-    """Compact Russian-language list of named hook patterns with one example each."""
+def _format_hook_patterns_compact() -> str:
+    """Phase Q v4 trim: name + 1-line skeleton, NO inline examples.
+    Cuts ~60% of token weight while keeping pattern semantics. The
+    model can derive examples from the name + skeleton."""
     lines = []
     for key, val in HOOK_PATTERNS.items():
-        ex = val["examples"][0] if isinstance(val.get("examples"), tuple) else ""
-        lines.append(f"- {key} ({val['ru_name']}): {val['skeleton']} Пример: «{ex}»")
+        lines.append(f"- {key}: {val['skeleton']}")
     return "\n".join(lines)
 
 
 def _format_evasion_rules() -> str:
-    """The 10 numbered writer-evasion rules from research."""
+    """The 10 numbered writer-evasion rules from research. KEPT in full —
+    these are the core mechanical guidance and removing them degrades
+    quality directly."""
     return "\n".join(f"{i+1}. {r}" for i, r in enumerate(EVASION_RULES))
-
-
-def _format_banned_tells_compact() -> str:
-    """Top 30 banned phrases as a single comma-quoted list (token-efficient)."""
-    top = ALL_BANNED_TELLS[:30]
-    return ", ".join(f"«{p}»" for p in top)
 
 
 # Module-level pre-formatted strings — built once, reused across every
 # prompt call. Saves tokens vs rebuilding per request.
-_EMOTION_TAXONOMY_TEXT = _format_emotion_taxonomy()
-_HOOK_PATTERNS_TEXT = _format_hook_patterns()
+#
+# Phase Q v4 (post-validation-failures): trimmed system prompts to free
+# Kimi from "instruction-stacking paralysis". The 51-phrase banned-tells
+# list is NOT injected into the prompt anymore — the deterministic
+# detector in ai_tells.py catches them post-generation regardless.
+_EMOTION_TAXONOMY_TEXT = _format_emotion_taxonomy_compact()
+_HOOK_PATTERNS_TEXT = _format_hook_patterns_compact()
 _EVASION_RULES_TEXT = _format_evasion_rules()
-_BANNED_TELLS_TEXT = _format_banned_tells_compact()
 _DEAD_LEVERS_TEXT = ", ".join(DEAD_LEVERS)
 
 
@@ -131,7 +138,7 @@ def _editorial_role_preamble(role_ru: str) -> str:
 
 
 def _safety_block() -> str:
-    return f"\n\n{SAFETY_FOOTER}"
+    return f"\n\n{SAFETY_FOOTER}{_STOP_SIGNAL}"
 
 
 # ---------------------------------------------------------------------------
@@ -364,25 +371,16 @@ def system_trend_strategist(style: StyleProfile | None) -> str:
 
 
 def system_audience_psychology(style: StyleProfile | None) -> str:
-    """Phase Q: emit specific 2026-current emotion + recognition moment +
-    sharp lever description. The 'cognitive_bias_lever' string field MUST
-    follow format «<bias> via <mechanism> at <click_position>» (≤25 слов)."""
+    """Phase Q v4 (trimmed): названия таксономий + формат без длинных пояснений."""
     return (
         _editorial_role_preamble("аналитик психологии аудитории")
-        + " Твоя задача в 2026: НЕ инъекция biases в читателя, а НАЗЫВАНИЕ "
-        "недовысказанной мысли, которая у читателя уже есть. Цель — узнавание, "
-        "не убеждение. "
-        "\n\nПоле target_emotion ОБЯЗАНО быть одним из 15 значений из таксономии "
-        "ниже (ключ snake_case, не свободный текст):\n"
-        + _EMOTION_TAXONOMY_TEXT
-        + "\n\nПоле hook_pattern ОБЯЗАНО быть одним из 8 паттернов:\n"
+        + " Задача: называть недовысказанную мысль читателя, не инъекция biases. "
+        "Цель — узнавание, не убеждение.\n\n"
+        f"target_emotion: одно из {{{_EMOTION_TAXONOMY_TEXT}}}.\n"
+        "hook_pattern: один из:\n"
         + _HOOK_PATTERNS_TEXT
-        + "\n\nПоле cognitive_bias_lever ОБЯЗАНО следовать формату:\n"
-        "«<bias> via <mechanism> at <click_position>» (≤25 слов).\n"
-        "Хороший пример: «anchoring via contrast at line 1 — stat sets baseline, "
-        "line 2 reframes felt meaning».\n"
-        "ЗАПРЕЩЕНО выдавать «выгоревшие» рычаги: " + _DEAD_LEVERS_TEXT + ". "
-        "Если рассмотрел один из них — переформулируй через actual recognition.\n"
+        + "\ncognitive_bias_lever: формат «<bias> via <mechanism> at <click_position>», ≤25 слов.\n"
+        f"Запрещены мёртвые рычаги: {_DEAD_LEVERS_TEXT}.\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -401,17 +399,16 @@ def system_style_dna_editor(style: StyleProfile | None) -> str:
 
 
 def system_platform_writer_telegram(style: StyleProfile | None) -> str:
+    """Phase Q v4 (trimmed): 10 evasion rules + hook-pattern names only.
+    Banned-phrase list is OUT of the prompt (deterministic detector
+    catches them post-generation). Cuts ~40% of prompt size vs v1."""
     return (
-        _editorial_role_preamble("райтер для Telegram (RU professional, май 2026)")
-        + " Лимит Bot API — 4096; engagement-оптимальная длина 800-1500. Лучше короче.\n\n"
-        "ПРАВИЛА (10 имп­ера­тивов, обязательны):\n"
+        _editorial_role_preamble("райтер для Telegram (RU pro, май 2026)")
+        + " Лимит 4096 chars, engagement-оптимум 800-1500. Короче — лучше.\n\n"
+        "ПРАВИЛА:\n"
         + _EVASION_RULES_TEXT
-        + "\n\nХУКИ — выбери ОДИН из 8 паттернов, не смешивай:\n"
+        + "\n\nВыбери ОДИН hook_pattern (не смешивай):\n"
         + _HOOK_PATTERNS_TEXT
-        + "\n\nЗАПРЕЩЁННЫЕ ФРАЗЫ (если встретил — переписать): "
-        + _BANNED_TELLS_TEXT
-        + "...\n\n"
-        + CTA_GUIDANCE
         + "\n\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
@@ -420,16 +417,14 @@ def system_platform_writer_telegram(style: StyleProfile | None) -> str:
 
 
 def system_platform_writer_threads(style: StyleProfile | None) -> str:
+    """Phase Q v4 (trimmed): no banned-list inline (detector catches)."""
     return (
-        _editorial_role_preamble("райтер для Threads (RU professional)")
-        + " Жёсткий лимит платформы 500 символов. Engagement-оптимально 180-380. "
-        "Заканчивай открытым вопросом — алгоритм Threads оптимизирует под "
-        "reply-chain depth, не лайки.\n\n"
-        "ПРАВИЛА (применить адаптированно под формат): "
-        "open с конкретной деталью (имя/число/сцена); ОДНО короткое предложение "
-        "под 6 слов; ОДНО длинное под 25 слов; минимум одна локатируемая "
-        "конкретика; в конце — открытый вопрос конкретному читателю.\n\n"
-        "ЗАПРЕЩЕНО: " + _BANNED_TELLS_TEXT + ".\n\n"
+        _editorial_role_preamble("райтер для Threads (RU pro)")
+        + " Лимит 500 chars, engagement-оптимум 180-380. "
+        "Завершай открытым вопросом — алгоритм оптимизирует reply-chain, не лайки.\n\n"
+        "Правила: open конкретной деталью (имя/число/сцена); ОДНО короткое предложение "
+        "до 6 слов; ОДНО длинное от 25; минимум одна локатируемая конкретика; "
+        "конец — открытый вопрос конкретному читателю.\n\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -437,16 +432,15 @@ def system_platform_writer_threads(style: StyleProfile | None) -> str:
 
 
 def system_platform_writer_reddit(style: StyleProfile | None) -> str:
+    """Phase Q v4 (trimmed)."""
     return (
-        _editorial_role_preamble("райтер для Reddit (RU + EN ready)")
-        + " Лимит title 300, лимит body 10000. Engagement-оптимально: "
-        "title 60-90 символов (полное утверждение или вопрос, без clickbait — "
-        "сообщество жёстко минусует); body 800-2000. "
-        "TL;DR в конце, не в начале (RU-конвенция 2026).\n\n"
-        "Можешь писать по-русски или по-английски — следуй языку источника.\n\n"
-        "ПРАВИЛА (10 импе­ра­тивов адаптированно):\n"
+        _editorial_role_preamble("райтер для Reddit (RU + EN)")
+        + " title 60-90 chars (полное утверждение/вопрос, без clickbait), "
+        "body 800-2000. TL;DR в конце, не в начале (RU-конвенция 2026). "
+        "Язык — по источнику.\n\n"
+        "ПРАВИЛА:\n"
         + _EVASION_RULES_TEXT
-        + "\n\nЗАПРЕЩЕНО: " + _BANNED_TELLS_TEXT + ".\n\n"
+        + "\n\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -454,27 +448,22 @@ def system_platform_writer_reddit(style: StyleProfile | None) -> str:
 
 
 def system_critic_red_team(style: StyleProfile | None) -> str:
-    """Phase Q: critic now receives deterministic AI-tells flags from the
-    Python detector AND adds its own editorial judgement on top."""
+    """Phase Q v4 (trimmed). Critic receives deterministic_flags via user
+    prompt — they ARE the floor. LLM adds editorial judgment on top."""
     return (
-        _editorial_role_preamble("критик / red team (RU editorial 2026)")
-        + " Проверяешь три черновика (TG / Threads / Reddit) на:\n"
-        "1. Слабый крючок — первые 1-2 строки должны останавливать скролл.\n"
-        "2. Несовпадение emotion_target и текста (если psych сказал «validated_cynicism», "
-        "а текст звучит как cheerleading — это hard fail).\n"
-        "3. Отсутствие конкретного якоря (имя, дата, цифра с дробью, URL).\n"
-        "4. Wrap-up концовка («таким образом», «подводя итог» — флаг).\n"
-        "5. Симметричные тройки «X, Y и Z» — флаг.\n"
-        "6. Em-dash flood (>2 тире в одном предложении).\n"
-        "7. Mismatch языка/тона с целевой аудиторией.\n\n"
-        "Дополнительно: в user-промпте ты получишь deterministic_flags — "
-        "список механических AI-tells, обнаруженных Python-детектором. "
-        "Эти флаги ОБЯЗАНЫ попасть в length_issues или factual_concerns и "
-        "увеличить slop_count.\n\n"
-        "ЗАПРЕЩЁННЫЕ ФРАЗЫ в драфтах (если найдёшь — флагнуть): "
-        + _BANNED_TELLS_TEXT
-        + "...\n\nhook_grade 0-10: 0-3 = серый, 4-6 = средний, 7-8 = сильный, "
-        "9-10 = выдающийся.\n"
+        _editorial_role_preamble("критик / red team (RU 2026)")
+        + " Оцениваешь TG/Threads/Reddit драфты. user-промпт включает "
+        "deterministic_flags от Python-детектора — они ОБЯЗАНЫ попасть в "
+        "length_issues или factual_concerns и поднять slop_count.\n\n"
+        "Сверху добавляешь editorial-флаги:\n"
+        "1. Слабый крючок (первые 1-2 строки не останавливают скролл)\n"
+        "2. Mismatch emotion_target vs текст (psych сказал validated_cynicism — "
+        "а тон cheerleading)\n"
+        "3. Нет конкретного якоря (имя, дата, цифра с дробью)\n"
+        "4. Wrap-up концовка-пересказ\n"
+        "5. Симметричные тройки «X, Y и Z»\n"
+        "6. Em-dash flood\n\n"
+        "hook_grade 0-10: 0-3 серый, 4-6 средний, 7-8 сильный, 9-10 выдающийся.\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
