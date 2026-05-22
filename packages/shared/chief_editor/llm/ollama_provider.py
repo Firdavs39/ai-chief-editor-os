@@ -59,12 +59,18 @@ class OllamaProvider(LLMProvider):
     # the failure sooner.
     DEFAULT_TIMEOUT_SECONDS = 900.0
     DEFAULT_MAX_RETRIES = 1
-    # Phase Q follow-up: cap output tokens so Kimi can't go verbose past
-    # the schema's reach. Phase 7 ran ~7K tokens/step on average; Phase Q
-    # ran ~14K tokens/step (2× verbose) and one step timed out at the
-    # Reddit 10K-char artifact. 4096 tokens is ~12-16K Russian chars —
-    # 2× headroom over the largest artifact (final_brief).
-    DEFAULT_MAX_TOKENS = 4096
+    # Phase Q follow-up (calibration v2): cap output tokens so Kimi can't
+    # run verbose past schema reach. Observed in production:
+    # - Phase 7 (cleaner prompts): avg 6.8K out/step, max ~6.5K.
+    # - Phase Q (richer prompts): avg 14K out/step, outlier 31K on
+    #   telegram step (the model was drafting/refining internally).
+    # 8192 tokens ≈ 24-32K Russian characters — 3× headroom over the
+    # largest artifact (final_brief, ~21K chars combined). Tight enough
+    # to catch the 31K-token verbose runaway, loose enough not to clip
+    # any normal Phase Q step (research_analyst observed at 5.2K).
+    # First v1 attempt at 4096 truncated research_analyst's JSON — too
+    # aggressive. 8192 is the calibrated value.
+    DEFAULT_MAX_TOKENS = 8192
 
     def __init__(
         self,

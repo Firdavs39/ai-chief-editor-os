@@ -308,11 +308,12 @@ def test_ollama_provider_uses_phase5_2_timeout_defaults() -> None:
 
 
 def test_ollama_provider_caps_max_tokens_post_phase_q() -> None:
-    """Phase Q follow-up: cap output at 4096 tokens. Without this, Kimi
-    can run unbounded (Phase Q validation produced 31K output tokens on
-    a tg_post step that only needs ~1500 tokens for the largest valid
-    artifact). The cap prevents API timeouts on the Reddit step."""
-    assert OllamaProvider.DEFAULT_MAX_TOKENS == 4096
+    """Phase Q follow-up (v2): cap output at 8192 tokens. v1 at 4096 was
+    too aggressive — truncated research_analyst's JSON (Phase Q observed
+    5.2K out on that step alone). 8192 is calibrated to 3× the largest
+    schema-valid artifact while still bounding the 31K verbose runaway
+    observed on the telegram step in Phase Q v1."""
+    assert OllamaProvider.DEFAULT_MAX_TOKENS == 8192
 
 
 def test_ollama_provider_accepts_explicit_overrides() -> None:
