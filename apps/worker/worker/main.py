@@ -222,7 +222,14 @@ def _generation_runs_tick(session: Session, *, limit: int = 3) -> int:
 
 async def generation_runs_loop(stop: asyncio.Event) -> None:
     settings = get_settings()
-    interval = max(15, settings.generate_interval_seconds // 8)
+    # Phase Q TD-7 fix: hard-cap the Phase 5.2+ workflow tick interval at
+    # 90 seconds regardless of generate_interval_seconds. Previously this
+    # was `generate_interval_seconds // 8`, which coupled the workflow's
+    # step-advance cadence to the legacy generation_loop's cadence. When
+    # an operator slowed the legacy loop (e.g. set GENERATE_INTERVAL_SECONDS
+    # to 86400 to defang it after TD-1), the workflow ticker also slowed
+    # to 3 hours/step, blocking active runs.
+    interval = max(15, min(90, settings.generate_interval_seconds // 8))
     while not stop.is_set():
         try:
             with session_scope() as session:
