@@ -24,12 +24,17 @@ from dataclasses import dataclass, field
 
 from .editorial_rules import (
     ALL_BANNED_TELLS,
+    ANTI_CTA_PATTERNS,
     BANNED_TELLS_TIER_1,
     CONNECTOR_PARAGRAPH_RATIO_LIMIT,
     EM_DASH_PER_1000_LIMIT,
+    FIRST_CHARS_ANCHOR_WINDOW,
+    SCREENSHOT_PHRASE_MAX_CHARS,
+    SCREENSHOT_PHRASE_MIN_WORDS,
     SENTENCE_START_CONNECTORS,
     SENTENCE_VARIANCE_MIN,
     TRIPLE_PARALLEL_LIMIT_PER_400_WORDS,
+    VAGUE_TIME_MARKERS,
 )
 
 # ---------------------------------------------------------------------------
@@ -170,6 +175,69 @@ def tier1_in_first_sentence(text: str) -> str | None:
     return None
 
 
+def anchor_in_first_chars(text: str, window: int = FIRST_CHARS_ANCHOR_WINDOW) -> bool:
+    """Phase Q v6 (R2): top-performing RU posts have a named entity OR
+    a decimal number within the first 100 characters. Reject if absent.
+    Stronger than the global `has_concrete_anchor` check — the anchor
+    must be UP-FRONT, not buried halfway down."""
+    if not text:
+        return False
+    head = text[:window]
+    return has_concrete_anchor(head)
+
+
+def has_screenshot_phrase(text: str) -> bool:
+    """Phase Q v6 (R2): top performers contain at least ONE short
+    sentence (≤60 chars, ≥3 words) that can stand alone as a screenshot
+    overlay. The "screenshottable line" hypothesis from R2 — viral RU
+    posts are engineered around ONE memorable claim.
+
+    Examples that pass: «Это не найм. Это покупка зрителя.»,
+    «Конец эпохи 'через 200 метров направо'».
+    """
+    if not text:
+        return False
+    for s in _sentences(text):
+        wc = _word_count(s)
+        if wc >= SCREENSHOT_PHRASE_MIN_WORDS and len(s) <= SCREENSHOT_PHRASE_MAX_CHARS:
+            return True
+    return False
+
+
+def vague_time_marker_hits(text: str) -> list[str]:
+    """Phase Q v6 (R2): vague time markers ('недавно', 'сейчас', etc.)
+    signal the writer didn't bother to cite a specific date. Top
+    performers cite dates ('С 1 сентября 2025', 'Q1 2026'). Returns
+    the list of vague markers FOUND."""
+    if not text:
+        return []
+    lower = text.lower()
+    return [m for m in VAGUE_TIME_MARKERS if m in lower]
+
+
+def anti_cta_hit_position(text: str) -> str | None:
+    """Phase Q v6 (R2 anti-example finding): generic subscribe/buy CTAs
+    in the first or last 20% of a post correlate with low engagement.
+    Returns 'opener' / 'closer' / None.
+
+    Tier-1 anti-CTAs ("подпишись", "поделитесь с друзьями", etc.) in
+    the wrong position are a hard floor flag — even good editorial work
+    is sabotaged by ad-template CTAs."""
+    if not text:
+        return None
+    n = len(text)
+    if n < 100:
+        return None
+    head = text[: n // 5].lower()
+    tail = text[-(n // 5):].lower()
+    for cta in ANTI_CTA_PATTERNS:
+        if cta in head:
+            return f"opener: «{cta}»"
+        if cta in tail:
+            return f"closer: «{cta}»"
+    return None
+
+
 def triple_parallel_hits(text: str, per_400_words_limit: int = TRIPLE_PARALLEL_LIMIT_PER_400_WORDS) -> int:
     """Count of triple-parallel structures, normalised against 400-word baseline.
 
@@ -205,6 +273,11 @@ class AITellsReport:
     banned_phrase_hits: list[str] = field(default_factory=list)
     tier1_in_opener: str | None = None
     triple_parallel_excess: int = 0
+    # Phase Q v6 (R2-derived):
+    anchor_in_first_chars: bool = True   # passes by default
+    has_screenshot_phrase: bool = True
+    vague_time_markers: list[str] = field(default_factory=list)
+    anti_cta_position: str | None = None
 
     @property
     def flags(self) -> list[str]:
@@ -259,6 +332,29 @@ class AITellsReport:
             )
             out.append("Banned tells found: " + ", ".join(f"«{p}»" for p in top) + extra)
 
+        # Phase Q v6 (R2-derived) — strong flags from top-performer fingerprint
+        if not self.anchor_in_first_chars:
+            out.append(
+                "No anchor in first 100 chars — top performers front-load "
+                "a named entity or non-round decimal number."
+            )
+        if not self.has_screenshot_phrase:
+            out.append(
+                "No screenshottable short sentence (≤60 chars, ≥3 words) — "
+                "viral RU posts engineer ONE memorable line to be quoted."
+            )
+        if self.vague_time_markers:
+            top = self.vague_time_markers[:2]
+            out.append(
+                "Vague time markers (use specific dates instead): "
+                + ", ".join(f"«{m}»" for m in top)
+            )
+        if self.anti_cta_position:
+            out.append(
+                f"Generic anti-CTA detected at {self.anti_cta_position} — "
+                f"top performers use anti-CTA or open question, not «подпишись»."
+            )
+
         return out
 
     @property
@@ -279,6 +375,11 @@ def analyze(text: str) -> AITellsReport:
         banned_phrase_hits=banned_phrase_hits(text),
         tier1_in_opener=tier1_in_first_sentence(text),
         triple_parallel_excess=triple_parallel_hits(text),
+        # Phase Q v6 (R2-derived):
+        anchor_in_first_chars=anchor_in_first_chars(text),
+        has_screenshot_phrase=has_screenshot_phrase(text),
+        vague_time_markers=vague_time_marker_hits(text),
+        anti_cta_position=anti_cta_hit_position(text),
     )
 
 
@@ -300,11 +401,15 @@ __all__ = [
     "AITellsReport",
     "analyze",
     "analyze_drafts",
+    "anchor_in_first_chars",
+    "anti_cta_hit_position",
     "banned_phrase_hits",
     "connector_paragraph_ratio",
     "em_dash_density",
     "has_concrete_anchor",
+    "has_screenshot_phrase",
     "sentence_length_variance",
     "tier1_in_first_sentence",
     "triple_parallel_hits",
+    "vague_time_marker_hits",
 ]

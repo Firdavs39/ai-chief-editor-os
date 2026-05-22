@@ -357,6 +357,43 @@ SENTENCE_VARIANCE_MIN: float = 0.45  # stdev / mean of sentence word-counts
 CONNECTOR_PARAGRAPH_RATIO_LIMIT: float = 0.40
 TRIPLE_PARALLEL_LIMIT_PER_400_WORDS: int = 2
 
+# Phase Q v6 thresholds, derived from R2 (RU viral content benchmarks May 2026).
+# These are the detector rules R2 identified that I had not yet enforced.
+FIRST_CHARS_ANCHOR_WINDOW: int = 100  # named entity + decimal in first N chars
+SCREENSHOT_PHRASE_MAX_CHARS: int = 60  # at least one sentence ≤N chars (screenshottable)
+SCREENSHOT_PHRASE_MIN_WORDS: int = 3   # but not a single word
+
+# Vague time markers that signal "недавно" instead of a concrete date.
+# Top RU posts use specific dates ("С 1 сентября 2025", "16 мая", "Q1 2026").
+VAGUE_TIME_MARKERS: tuple[str, ...] = (
+    "недавно",
+    "в последнее время",
+    "сейчас",  # only flagged in opener context where it replaces a date
+    "на днях",
+    "в наши дни",
+    "за последнее время",
+    "в скором времени",
+    "в ближайшее время",
+)
+
+# Anti-CTA patterns — generic subscribe/buy that low-performers ALWAYS have
+# and high-performers NEVER have. R2 anti-example finding.
+ANTI_CTA_PATTERNS: tuple[str, ...] = (
+    "подпишись",
+    "подпишитесь",
+    "подписывайтесь",
+    "ставьте лайк",
+    "поделитесь с друзьями",
+    "пишите ваше мнение в комментариях",
+    "сохраняйте, чтобы не потерять",
+    "купите",
+    "оформите подписку",
+    "промокод",  # in CTA context
+    "по моей ссылке",
+    "регистрируйтесь",
+    "записывайтесь на курс",
+)
+
 # Sentence-start connector phrases the detector counts.
 # Most are valid Russian — they're not banned individually, only flagged
 # when >40% of paragraphs start with one (mechanical "AI flow").
@@ -410,6 +447,7 @@ CTA_GUIDANCE: str = (
 
 __all__ = [
     "ALL_BANNED_TELLS",
+    "ANTI_CTA_PATTERNS",
     "BANNED_TELLS_TIER_1",
     "BANNED_TELLS_TIER_2",
     "BANNED_TELLS_TIER_3",
@@ -423,9 +461,13 @@ __all__ = [
     "EMOTION_TAXONOMY",
     "EMOTION_TAXONOMY_KEYS",
     "EVASION_RULES",
+    "FIRST_CHARS_ANCHOR_WINDOW",
     "HOOK_PATTERNS",
     "LENGTH_SWEET_SPOT",
+    "SCREENSHOT_PHRASE_MAX_CHARS",
+    "SCREENSHOT_PHRASE_MIN_WORDS",
     "SENTENCE_START_CONNECTORS",
     "SENTENCE_VARIANCE_MIN",
     "TRIPLE_PARALLEL_LIMIT_PER_400_WORDS",
+    "VAGUE_TIME_MARKERS",
 ]

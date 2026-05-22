@@ -13,7 +13,6 @@ from chief_editor.services.generation.workflow import (
     _merge_deterministic_flags_into_critic,
 )
 
-
 # ---------------------------------------------------------------------------
 # Drafts pre-built to exercise the detector
 # ---------------------------------------------------------------------------
