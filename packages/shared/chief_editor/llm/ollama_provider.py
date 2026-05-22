@@ -46,11 +46,27 @@ def host_of(base_url: str) -> str:
 class OllamaProvider(LLMProvider):
     name = "ollama"
 
+    # Phase 5.2 follow-up: tighten timeout / retry behavior for Ollama Cloud.
+    # The OpenAI SDK defaults to a 600 s timeout × 2 retries = up to 1 800 s
+    # of waiting before the call fails. Run #2 of the Phase 5.2 validation
+    # hit exactly this ceiling on a slow step. We prefer to fail faster:
+    #   per-call timeout: 900 s (15 min) — generous enough for Kimi's
+    #     longest legitimate response (final_brief output ~6 K tokens
+    #     observed at ~25 min, but the actual API call is usually well
+    #     under 15 min; if it isn't, retry is what salvages it).
+    #   max_retries: 1 — single retry on a 5xx / connection error.
+    # Worst case = 1 800 s as before, but typically 900 s and operators see
+    # the failure sooner.
+    DEFAULT_TIMEOUT_SECONDS = 900.0
+    DEFAULT_MAX_RETRIES = 1
+
     def __init__(
         self,
         base_url: str,
         api_key: str,
         model: str = "kimi-k2.6:cloud",
+        timeout_seconds: float | None = None,
+        max_retries: int | None = None,
     ) -> None:
         super().__init__()
         if not base_url:
@@ -72,8 +88,16 @@ class OllamaProvider(LLMProvider):
         self._client = OpenAI(
             base_url=_normalize_base_url(base_url),
             api_key=api_key,
-            # The OpenAI SDK retries 2x on transient errors by default; we layer
-            # our own JSON-repair retry on top.
+            timeout=(
+                timeout_seconds
+                if timeout_seconds is not None
+                else self.DEFAULT_TIMEOUT_SECONDS
+            ),
+            max_retries=(
+                max_retries
+                if max_retries is not None
+                else self.DEFAULT_MAX_RETRIES
+            ),
         )
         self._model = model
         self._raw_base_url = base_url

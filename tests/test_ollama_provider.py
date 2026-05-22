@@ -299,6 +299,31 @@ def test_ollama_provider_refuses_empty_api_key() -> None:
         OllamaProvider(base_url="https://ollama.com", api_key="")
 
 
+def test_ollama_provider_uses_phase5_2_timeout_defaults() -> None:
+    """Phase 5.2 follow-up: per-call timeout 900 s, 1 retry. Defaults
+    matter because Phase 5.2 run #2 ran into the SDK default (600 s × 3
+    retries = 1 800 s) which hides slow Kimi responses for too long."""
+    assert OllamaProvider.DEFAULT_TIMEOUT_SECONDS == 900.0
+    assert OllamaProvider.DEFAULT_MAX_RETRIES == 1
+
+
+def test_ollama_provider_accepts_explicit_timeout_override() -> None:
+    """Operators can tune timeout per environment without monkey-patching
+    the class default."""
+    p = OllamaProvider(
+        base_url="https://ollama.com",
+        api_key="ollama_FAKE",
+        model="kimi-test",
+        timeout_seconds=120.0,
+        max_retries=0,
+    )
+    # The OpenAI SDK exposes timeout as `timeout` on the client instance
+    # (https-x._client). We assert the underlying client got the value
+    # we passed.
+    assert p._client.timeout == 120.0
+    assert p._client.max_retries == 0
+
+
 # ---------------------------------------------------------------------------
 # /brief/generate safety with ollama provider
 # ---------------------------------------------------------------------------
