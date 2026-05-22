@@ -1,7 +1,44 @@
-# Handoff — Phase 5.2 → 13 work completed by Claude
+# Handoff — Phase 5.2 → Phase Q work completed by Claude
 
 > What was actually shipped in this session, what's left for the operator
 > (you), and the exact next action.
+
+---
+
+## 0. Phase Q (Quality Hardening) — added later in the session
+
+After the original Phase 5.2-13 work, an additional **Phase Q** layer
+was built on top. It addresses a separate concern: not "does the
+system function?" (5.2 fixed that) but "is the output of a successful
+run actually publishable?"
+
+**Phase Q ships:**
+- 51-phrase banned-tells catalogue across 6 severity tiers (in detector,
+  NOT in prompts — frees tokens, catches more)
+- 8 named hook patterns + 15-emotion taxonomy + 10 evasion rules +
+  dead-lever deny-list embedded in system prompts at Kimi's sweet spot
+  (258-1159 tokens per step)
+- **Deterministic AI-tells detector** (`ai_tells.py`) with 11 checks:
+  em-dash density, sentence-length variance, connector ratio,
+  concrete-anchor presence, banned-phrase hits, Tier-1-in-opener,
+  triple-parallel excess, **front-loaded anchor**, **screenshottable
+  phrase**, **vague time markers**, **anti-CTA position**.
+- Sierra-style supervisor: critic_red_team step's payload gets
+  deterministic flags **merged AFTER** the LLM returns. Even if Kimi
+  forgets to flag, Python guarantees the flags reach the operator.
+- Kimi-tuned defaults: timeout 30 min × 1 retry, max_tokens 16384
+  (3× normal output, catches verbose runaway without truncating).
+- Bad/Good anti-example pair in writer prompts (R3 highest-ROI single
+  intervention).
+- 3 research passes (Kimi prompt engineering, RU viral benchmarks,
+  production editorial workflows) — see `PHASE_5_2_REPORT.md` +
+  `PHASE_Q_REPORT.md` for the full synthesis.
+
+**Phase Q test count:** 362 (was 311 before Phase Q; +51 for the
+Quality work on top of Phase 5.2-13's tests).
+
+See `docs/PHASE_Q_REPORT.md` for the validation outcome on a real
+Kimi run.
 
 ---
 
