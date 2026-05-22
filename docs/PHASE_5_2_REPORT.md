@@ -1,5 +1,10 @@
 # Phase 5.2 — Final Report
 
+> **Update (May 22):** Phase 7 end-to-end validation on REAL data
+> succeeded. See "Phase 7 validation run" section below.
+
+
+
 > Goal: prove the Phase 5.1 failure mode (`editorial_rationale > 240`
 > chars on Kimi) is fixed by the schema-vs-platform-limit raise +
 > validation-aware repair.
@@ -246,3 +251,95 @@ tests/test_generation_workflow.py                               — stale 240-ca
 ```
 
 Net: **+51 tests** (258 → 309), **0 safety regressions**, all gates green.
+
+---
+
+## Phase 7 validation run — real data, end-to-end (May 22)
+
+After Phase 7 wired ~10 RSS sources (vc.ru, Habr, TechCrunch, MIT Tech
+Review, Hacker News, etc.) and the first collector tick ingested 142
+real items / clustered into 50 trend clusters, we triggered a single
+Generate Brief run on the top-scoring real cluster (a Habr article on
+the 71% growth in corporate-psychologist hiring as employees report
+burnout).
+
+| Field | Value |
+|---|---|
+| `run_id` | `58befef5-a8dc-4e3b-9f48-cf83ef2b4e9f` |
+| Source cluster | `27a8542a` (real Habr article — NOT demo seed) |
+| Final status | **succeeded** ✓ |
+| Wall clock | **39:00** |
+| Steps succeeded | 11/11 ✓ |
+| Provider / model | ollama / kimi-k2.6:cloud |
+| `candidate_id` | `7a97530c-187e-42fe-863d-60a2bfa52e45` |
+| Candidate status | `draft` |
+| Judge recommendation | `revise` |
+| Judge scores | style_match **0.92**, viral **0.86**, slop_risk **0.12**, controversy_risk 0.38 |
+| Total tokens | 22 301 in + 68 251 out |
+| **Cost** | **$0.1454** |
+
+### Safety invariants (DB-verified for this run)
+- `generation_steps`: **11** ✓
+- `generation_artifacts`: **11** ✓
+- `PostCandidate(id=7a97530c…, status='draft')`: **exists** ✓
+- `approval_decisions WHERE candidate_id=7a97530c…`: **0** ✓
+- `publish_jobs WHERE candidate_id=7a97530c…`: **0** ✓
+
+### Editorial quality (subjective, but documented for the record)
+
+The model reframed the cluster's headline ("56% сотрудников жалуются на
+выгорание") into a sharper editorial angle: **"71% вакансий
+корппсихологов как управленческий дефолт"** — inverting the apparent
+HR-positive metric (more psychologists) into a marker of systemic
+failure (companies hiring stress-treaters instead of fixing the
+processes that produce stress).
+
+Highlights from the TG version (excerpt):
+
+> «Компании массово нанимают психологов, но не меняют процессы.
+> Переработки, давление, непрозрачные KPI — теперь «лечат» через сессии.
+> Психолог в офисе становится пластырем: он гасит симптомы, пока
+> система производит новые причины.»
+
+The judge's `revise` recommendation flagged: (a) TG version exceeded
+the 1024-char soft target (1290 chars), (b) CTA could be more
+imperative, (c) controversy risk is real (the angle is critical of
+common HR practice).
+
+### Latency comparison vs Phase 5.2 runs
+
+| | Phase 5.2 #1 (3d427f68) | Phase 5.2 #2 (89afab84) | Phase 7 (27a8542a) |
+|---|---|---|---|
+| outcome | succeeded | failed (step 8 timeout) | **succeeded** |
+| wall | 80:00 | >120:00 (cap) | **39:00** |
+| step 2 dur | 737 s | 207 s | (not isolated; total LLM time ~30 min) |
+| Kimi load | normal | heavy (Sunday afternoon) | **light** |
+
+The Ollama timeout fix shipped earlier today (`DEFAULT_TIMEOUT_SECONDS =
+900.0`, `DEFAULT_MAX_RETRIES = 1`) was active during this run but did
+not need to fire — Kimi was responsive throughout.
+
+## What this run proves
+
+1. **Phase 7 RSS pipeline works.** Real RSS items → real trend clusters
+   → operator can pick one and generate a brief, all without seed data.
+2. **Phase 5.2 fix holds on real data.** No length overflow, no
+   ValidationError on any step. The schema-vs-platform-limit philosophy
+   is correct.
+3. **Token telemetry works on the live provider.** Per-step counts
+   persist; `/analytics/cost` returns aggregates.
+4. **The product is functional.** This is the milestone where the
+   dashboard stops being a demo and starts being editorial infrastructure.
+
+## What's left before "first real publish"
+
+This validation run produces a `draft` candidate in the DB. To move it
+to a published Telegram post, the operator must:
+
+1. Open the candidate in `/editor/7a97530c…` (or via the candidates
+   list), read it, decide approve / reject / rewrite.
+2. Provide TG_BOT_TOKEN + target test channel id via Vault.
+3. Walk the 4-step publish ritual via `scripts/phase8_safety_walker.py`.
+
+The system itself is ready. The remaining gates are explicitly
+operator-only (safety contract).
