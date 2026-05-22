@@ -220,6 +220,66 @@ def _build_repair_prompt(
     )
 
 
+def _merge_deterministic_flags_into_critic(
+    payload: dict[str, Any], artifacts: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """Phase Q v5 (post-R3 supervisor pattern): after the LLM critic
+    returns its judgement, Python re-runs the deterministic AI-tells
+    detector on the same drafts and MERGES findings into the payload.
+
+    This is defense-in-depth — Sierra's "Jiminy Cricket" output-supervisor
+    pattern. The LLM critic SHOULD surface deterministic flags itself
+    (the user prompt instructs it to), but even if it forgets or
+    soft-pedals, this merge guarantees floor-quality flags reach the
+    operator.
+
+    Mutation contract:
+    - slop_count incremented by number of NEW flag categories detected
+      (capped at 9, since hook_grade caps the relevant zone).
+    - length_issues list extended with deterministic-only flags (truncated
+      to the schema's 3-item max).
+    - factual_concerns is NOT mutated — those are editorial judgements,
+      not mechanical AI-tells.
+    """
+    from .ai_tells import analyze_drafts
+
+    tg = artifacts.get("tg_post", {})
+    th = artifacts.get("threads_post", {})
+    rd = artifacts.get("reddit_post", {})
+
+    reports = analyze_drafts(
+        tg_body=str(tg.get("body", "")),
+        threads_body=str(th.get("body", "")),
+        reddit_body=str(rd.get("body", "")),
+    )
+
+    # Collect all flag strings across the three platforms, prefixed by platform.
+    new_flags: list[str] = []
+    new_slop = 0
+    for platform, report in reports.items():
+        new_slop += report.slop_count
+        for flag in report.flags:
+            new_flags.append(f"[{platform}] {flag}")
+
+    # Mutate length_issues — extend with deterministic flags the LLM may
+    # have missed. Cap at schema's max (3 items).
+    existing = list(payload.get("length_issues") or [])
+    existing_set = set(existing)
+    for f in new_flags:
+        if f not in existing_set and len(existing) < 3:
+            existing.append(f)
+            existing_set.add(f)
+    payload["length_issues"] = existing
+
+    # Update slop_count — take the MAX of LLM's value and detector's
+    # count. The LLM may add its own slop observations on top of
+    # mechanical AI-tells, so we don't simply overwrite.
+    llm_slop = int(payload.get("slop_count") or 0)
+    payload["slop_count"] = max(llm_slop, new_slop)
+
+    return payload
+
+
 def _log_artifact_lengths(step_name: str, payload: dict[str, Any]) -> None:
     """Observability hook (Phase 5.2): record per-field string lengths.
 
@@ -380,6 +440,10 @@ def _execute_llm_step(
             user_prompt=user_prompt,
             temperature=temperature,
         )
+        # Phase Q v5: critic step gets a deterministic flag-merge on top
+        # of the LLM's editorial judgment. Sierra-style output-supervisor.
+        if step_def.name == "critic_red_team":
+            payload = _merge_deterministic_flags_into_critic(payload, artifacts)
         return payload, _usage_for(primary, used_fallback=False)
     except ValidationError as primary_exc:
         # Length-only failures must NEVER fall back. The schema is correct;
@@ -412,6 +476,8 @@ def _execute_llm_step(
                 step_def.name,
                 fallback.name,
             )
+            if step_def.name == "critic_red_team":
+                payload = _merge_deterministic_flags_into_critic(payload, artifacts)
             return payload, _usage_for(fallback, used_fallback=True)
         except Exception as fb_exc:  # noqa: BLE001 — surface the original
             log.info(
