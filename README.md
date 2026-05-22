@@ -28,6 +28,9 @@ Think Sprout Social / Hootsuite functionality with Linear / Raycast / Vercel pol
 | 10 | ✅ scaffold shipped | `/analytics/cost` + price table. 9 new tests. |
 | 11–12 | ✅ scaffolds shipped | Style DNA proposals (no silent mutation) + performance feedback (capped boost). 10 new tests. |
 | 13 | ✅ documented | Hosting decision (see [docs/HOSTING_DECISION.md](docs/HOSTING_DECISION.md)) |
+| **Q** | ✅ shipped + research-grounded | **Quality Hardening.** 3 research passes synthesized (Kimi prompt-engineering, RU viral benchmarks May 2026, production editorial workflows). Banned-tells catalogue (51 phrases × 6 tiers) + 8 hook patterns + 15-emotion taxonomy + 10 evasion rules + Bad/Good anti-example pairs. System prompts trimmed to Kimi sweet spot (258-1159 tokens). **Deterministic AI-tells detector** (em-dash density, sentence-length variance, screenshottable phrase, front-loaded anchor, anti-CTA position, etc.) wrapping a Sierra-style critic supervisor that merges flags into `critic_report`. Plus TD-1 fix: legacy `generation_loop` now yields to active Phase 5.2+ runs. **+78 tests, 366 total. 6 new docs.** |
+
+**Read [`START_HERE.md`](START_HERE.md) first** — it's the 5-minute "do this in this order" guide from clone to first publish.
 
 See [docs/PHASE_PLAN.md](docs/PHASE_PLAN.md) for the full roadmap, [docs/HANDOFF.md](docs/HANDOFF.md) for what's done vs operator-action items, and [docs/OPERATOR_RUNBOOK.md](docs/OPERATOR_RUNBOOK.md) for the 4-step publish ritual.
 
