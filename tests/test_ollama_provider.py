@@ -307,12 +307,15 @@ def test_ollama_provider_uses_phase_q_final_timeout_defaults() -> None:
     assert OllamaProvider.DEFAULT_MAX_RETRIES == 1
 
 
-def test_ollama_provider_max_tokens_safe_upper_bound() -> None:
-    """Phase Q final calibration: don't cap Kimi's verbose-draft output.
-    32K is a safe upper bound that fits ~96K Russian chars — leaves
-    room for any conceivable artifact + internal draft scratch. The
-    real bound is timeout, not tokens."""
-    assert OllamaProvider.DEFAULT_MAX_TOKENS == 32000
+def test_ollama_provider_max_tokens_calibrated_to_phase_q_v3() -> None:
+    """Phase Q final v3 calibration. v1 at 4096 truncated normal output;
+    v2 at 8192 succeeded once but editor_in_chief_draft step (largest
+    artifact) hit verbose-runaway at unbounded (32K cap = effectively
+    unbounded) and timed out. 16384 is the calibrated middle:
+    - 3× Phase 7's max legitimate step output (5.7K tokens)
+    - Below the 31K verbose-runaway observed on Phase Q v1 telegram step
+    - ~50K Russian chars ≈ 2× the largest artifact (final_brief)"""
+    assert OllamaProvider.DEFAULT_MAX_TOKENS == 16384
 
 
 def test_ollama_provider_accepts_explicit_overrides() -> None:

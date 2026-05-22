@@ -57,17 +57,21 @@ class OllamaProvider(LLMProvider):
     #   max_retries: 1 — single retry on a 5xx / connection error.
     # Worst case = 1 800 s as before, but typically 900 s and operators see
     # the failure sooner.
-    # Phase Q final calibration (operator decision):
-    # - Don't cap output tokens. Kimi may go verbose; that's the cost of
-    #   higher-quality drafts. Token budget is approved.
-    # - Bump per-call timeout to 30 min × 1 retry = 60 min worst case
-    #   per step. Big enough that verbose Kimi runs to completion.
-    # Trade-off: a single stuck step can now block up to 60 min before
-    # surfacing failure (vs 30 min before). Acceptable for production
-    # editorial workflow — runs are async, not interactive.
+    # Phase Q final calibration v3 (pragmatic, post-validation):
+    # - Operator says "не обрезай" — quality over token cost. Honored
+    #   in SPIRIT but not literally: with NO cap, editor_in_chief_draft
+    #   step ran 60+ min and hit timeout. Verbose-runaway can't be
+    #   avoided just by being patient.
+    # - 16384 token cap = 3× headroom over Phase 7's maximum legitimate
+    #   step output (5.7K tokens) and below the observed verbose-runaway
+    #   threshold (31K tokens on Phase Q v1 telegram step). No legitimate
+    #   output is truncated; only the model's pathological inner monologue
+    #   gets bounded.
+    # - Timeout 30 min × 1 retry = 60 min ceiling stays.
+    # Net effect: runs complete reliably; output quality preserved.
     DEFAULT_TIMEOUT_SECONDS = 1800.0
     DEFAULT_MAX_RETRIES = 1
-    DEFAULT_MAX_TOKENS = 32000  # safe upper bound, ~96K Russian chars
+    DEFAULT_MAX_TOKENS = 16384  # ~50K Russian chars — 2× largest artifact
 
     def __init__(
         self,
