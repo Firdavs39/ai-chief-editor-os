@@ -349,6 +349,18 @@ _RATIONALE_RULE = (
     "контента, не служебные размышления."
 )
 
+# Phase Q v7 — anti-example sketch for writer prompts (R3 finding: positive
+# examples define center of target, negative examples define edges).
+# ONE compact line per writer prompt — Anthropic skill-creator Bad/Good pattern.
+# Sourced from R2's anti-example fingerprint (May 2026 verified).
+_WRITER_ANTI_EXAMPLE = (
+    "❌ Анти-пример (НЕ пиши так): «В современном мире AI меняет всё. "
+    "Стоит отметить ключевую роль данных технологий. Подписывайтесь, "
+    "чтобы не пропустить разбор!» — empty opening + АИ-штампы + generic "
+    "anti-CTA. ✓ Пиши конкретику: имя/дата/цифра с дробью + одна "
+    "screenshottable строка ≤60 символов + анти-CTA или открытый вопрос."
+)
+
 
 def system_research_analyst(style: StyleProfile | None) -> str:
     return (
@@ -399,9 +411,10 @@ def system_style_dna_editor(style: StyleProfile | None) -> str:
 
 
 def system_platform_writer_telegram(style: StyleProfile | None) -> str:
-    """Phase Q v4 (trimmed): 10 evasion rules + hook-pattern names only.
-    Banned-phrase list is OUT of the prompt (deterministic detector
-    catches them post-generation). Cuts ~40% of prompt size vs v1."""
+    """Phase Q v4 (trimmed) + v7 (anti-example): 10 evasion rules +
+    hook-pattern names + ONE Bad/Good anti-example pair (R3 finding).
+    Banned-phrase list is OUT of the prompt — deterministic detector
+    catches them post-generation."""
     return (
         _editorial_role_preamble("райтер для Telegram (RU pro, май 2026)")
         + " Лимит 4096 chars, engagement-оптимум 800-1500. Короче — лучше.\n\n"
@@ -409,7 +422,7 @@ def system_platform_writer_telegram(style: StyleProfile | None) -> str:
         + _EVASION_RULES_TEXT
         + "\n\nВыбери ОДИН hook_pattern (не смешивай):\n"
         + _HOOK_PATTERNS_TEXT
-        + "\n\n"
+        + f"\n\n{_WRITER_ANTI_EXAMPLE}\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -432,7 +445,7 @@ def system_platform_writer_threads(style: StyleProfile | None) -> str:
 
 
 def system_platform_writer_reddit(style: StyleProfile | None) -> str:
-    """Phase Q v4 (trimmed)."""
+    """Phase Q v4 (trimmed) + v7 (anti-example)."""
     return (
         _editorial_role_preamble("райтер для Reddit (RU + EN)")
         + " title 60-90 chars (полное утверждение/вопрос, без clickbait), "
@@ -440,7 +453,7 @@ def system_platform_writer_reddit(style: StyleProfile | None) -> str:
         "Язык — по источнику.\n\n"
         "ПРАВИЛА:\n"
         + _EVASION_RULES_TEXT
-        + "\n\n"
+        + f"\n\n{_WRITER_ANTI_EXAMPLE}\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
