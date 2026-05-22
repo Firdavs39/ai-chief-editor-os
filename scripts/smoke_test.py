@@ -27,7 +27,6 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-
 # ASCII-only marks for cross-platform terminal compatibility
 # (Windows PowerShell defaults to cp1251 and can't print ✓ / ✗ / ⚠).
 CHECK_OK = "[OK]"
@@ -208,7 +207,11 @@ def main() -> int:
     rep.section("Phase Q detector")
     try:
         from chief_editor.services.generation.ai_tells import analyze
-        from chief_editor.services.generation.editorial_rules import ALL_BANNED_TELLS, EMOTION_TAXONOMY, HOOK_PATTERNS
+        from chief_editor.services.generation.editorial_rules import (
+            ALL_BANNED_TELLS,
+            EMOTION_TAXONOMY,
+            HOOK_PATTERNS,
+        )
 
         rep.check(
             "banned-tells catalogue loaded",

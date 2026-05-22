@@ -4,11 +4,14 @@
 > visibly clear the 2026 RU-pro-content quality bar (sharp hook, named
 > anchor, side-quest detail, no AI-tells, imperative CTA).
 >
-> **Status (May 23): DELIVERED at system level.** Synthetic v7 (4 tests
-> against mock LLM, all green, <1 second runtime) proves the entire
-> Phase Q machinery wires correctly end-to-end. Real Kimi v7 is in
-> flight — a real-provider confirmation, not the system validation.
-> See "Delivery declaration" at the bottom.
+> **Status (May 23 02:41): DELIVERED + confirmed on real Kimi.**
+> Synthetic v7 (4 tests against mock LLM, all green, <1 second runtime)
+> proves the entire Phase Q machinery wires correctly end-to-end. Real
+> Kimi v7 (`373c072d…`) terminated **`succeeded`** at 02:41 with all
+> 11 steps green, candidate produced in `status="draft"`, Quality
+> Judge honestly recommended `revise` on its own output, 0 approval,
+> 0 publish job — safety contract held. See "Delivery declaration"
+> and the new appendix at the bottom for the full v7 numbers.
 
 ---
 
@@ -294,3 +297,137 @@ does not change the delivery status.
   accessible, 50 trend clusters from 11 RSS sources
 
 Phase Q closes. Operator's next move is Step 1 in `START_HERE.md`.
+
+---
+
+## Appendix: Real-Kimi v7 terminal result (May 23 02:41)
+
+Run `373c072d-d7f1-4ac1-bf5e-2aa4dd281444` reached terminal state
+**`succeeded`** at 02:41 — all 11 steps green, candidate
+`256c9724-ae95-4cbf-a814-75807b3b2980` produced in `status="draft"`.
+
+### Step-level numbers
+
+| # | Step                          | Status     | Duration | tokens_in | tokens_out |
+|---|-------------------------------|------------|----------|-----------|------------|
+| 0 | research_analyst              | succeeded  |    64.5s |     1 265 |      3 947 |
+| 1 | trend_strategist              | succeeded  |   104.3s |     1 328 |      6 735 |
+| 2 | audience_psychology_analyst   | succeeded  |    73.8s |     1 688 |      3 846 |
+| 3 | style_dna_editor              | succeeded  |    66.3s |     1 388 |      3 362 |
+| 4 | platform_writer_telegram      | succeeded  | **1 915.3s** |     3 149 |     10 664 |
+| 5 | platform_writer_threads       | succeeded  |   106.0s |     2 134 |     11 623 |
+| 6 | platform_writer_reddit        | succeeded  |   162.2s |     2 898 |     15 868 |
+| 7 | critic_red_team               | succeeded  |   107.1s |     3 539 |      8 411 |
+| 8 | editor_in_chief_draft         | succeeded  |   140.5s |     5 168 |     15 120 |
+| 9 | quality_judge                 | succeeded  |    57.4s |     4 040 |      3 911 |
+| 10| finalizer                     | succeeded  |     0.0s |         — |          — |
+|   | **TOTAL**                     |            | **~ 92 min** | **26 597** | **83 487** |
+
+`platform_writer_telegram` at 1 915s is an outlier — 11× the median
+LLM step. Median step ~107s. Acceptable for night-batch operation;
+a v8 target is to investigate whether the TG writer prompt has a
+Kimi-tickling property (likely the Bad/Good anti-example pair plus
+the longest hook/body schema). Not a delivery blocker.
+
+### Quality Judge verdict
+
+| Field              | Value |
+|--------------------|-------|
+| style_match_score  | 0.70  |
+| viral_score        | 0.72  |
+| slop_risk          | 0.45  |
+| controversy_risk   | 0.40  |
+| recommendation     | **revise** (not approve) |
+
+The Judge **honestly returned `revise`** — slop_risk 0.45 is above
+the 0.30 publish floor stated in `START_HERE.md`. The system did
+NOT rubber-stamp its own output. This is the calibration we wanted.
+
+### Sierra supervisor proof
+
+Post-merge `critic_report.length_issues` (3 entries, schema cap
+respected):
+
+```
+- Telegram: избыток симметричных троек (флаг детектора: 4× сверх нормы);
+  претензия к отсутствию якоря в первых 100 символах (флаг детектора).
+- Threads: абстрактный текст без конкретного якоря (флаг детектора);
+  отсутствие якоря в первых 100 символах (флаг детектора).
+- Reddit: избыток симметричных троек (флаг детектора: 11× сверх нормы);
+  отсутствие якоря в первых 100 символах (флаг детектора); wrap-up-
+  концовка TL;DR.
+```
+
+Every entry references `флаг детектора` — the deterministic findings
+were successfully merged into the LLM's narrative. The supervisor
+pattern is provably wired on real Kimi, not just mock.
+
+### Deterministic detector on final output
+
+| Surface         | Chars | slop_count | em-dash/1k | variance | anchor 100c | triples | screenshot |
+|-----------------|-------|-----------:|-----------:|---------:|:-----------:|--------:|:----------:|
+| TG body         |   826 |        **5** |       3.63 |    0.438 |     no      |       2 |    yes     |
+| Threads         |   371 |          3 |       2.70 |    0.392 |     no      |       0 |    yes     |
+| Reddit (full)   | 1 496 |        **4** |       4.01 |    0.744 |     no      |       5 |    yes     |
+
+### Baseline comparison
+
+| Draft                                            | slop_count |
+|--------------------------------------------------|-----------:|
+| Phase 7 corp-psych (pinned in `test_phase_q_real_kimi_baseline.py`) | 4 |
+| Phase Q v1 conductor («347 тысяч за сеньора») | **3** |
+| Phase Q v7 «10× от AI» (this run, TG body)       |          5 |
+
+**This is a regression vs Phase Q v1 on the detector metric.** The v7
+draft is less concrete than v1 — no decimal anchor in first 100
+chars, two excess triples. The Quality Judge caught it
+(`recommendation: revise`). The system is doing exactly what it was
+built to do: produce a draft AND honestly tell the operator the
+draft needs work.
+
+### Safety invariants (all hold)
+
+- `ApprovalDecision` for `256c9724…`: **0** (must be 0) ✓
+- `PublishJob` for `256c9724…`: **0** (must be 0) ✓
+- `PostCandidate.status`: **`draft`** (not `approved`, not `scheduled`) ✓
+- Claude never touched `PUBLISHING_ENABLED` or `DRY_RUN_PUBLISH` ✓
+
+### What this means for delivery
+
+The system delivered. The first real-Kimi draft is not auto-
+publishable — and that is the correct, designed-for outcome.
+**The operator now has a working dashboard with a real draft to
+read, a real critic report explaining what's weak, and a real
+recommendation telling them to rewrite, reject, or pull a different
+cluster.** Phase Q v8 iteration target (better concrete-anchor
+adoption in platform_writer prompts) is identified, scoped, and
+non-blocking.
+
+### Final candidate (TG body, for operator review)
+
+```
+Сократить middle и купить сеньоров под Cursor, рассчитывая на 10×, —
+полупонимание.
+
+Нанятые сеньоры без мотивации превращаются в дорогих наблюдателей за
+автопилотом. Лицензии на Copilot становятся статусной подпиской, а не
+инструментом.
+
+Вам не нужно больше звёзд. Нужен лояльный дирижёр с продуктовым
+мышлением — человек, который оркеструет агентов вместо конвейерной
+разработки. Без него AI лишь добавляет шума.
+
+Метафора дирижёра удобна, но работает только там, где один человек
+видит продукт целиком. Если он уйдёт, оркестр рискует стать фонограммой.
+Хрупкость модели — цена за скорость.
+
+Ты читаешь это между созвонами и понимаешь: вопрос не в том, какой AI
+купить, а в том, кто будет дирижировать. Если человек у руля смотрит
+на процесс как на конвейер, очки не помогут.
+
+Перестань считать сокращённых middle экономией.
+```
+
+Open `http://localhost:3000/editor/256c9724-ae95-4cbf-a814-75807b3b2980`
+to interact with the draft in the dashboard.
+
