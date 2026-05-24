@@ -23,7 +23,11 @@ export default async function AppLayout({
         <Sidebar />
         <main className="flex min-h-screen min-w-0 flex-1 flex-col">{children}</main>
         <MockModePill active={status.mock_mode} />
-        <div className="fixed bottom-3 left-3 z-40 sm:bottom-5 sm:left-5">
+        {/* Connection badge: hidden on mobile to avoid colliding with
+           sticky action bars (EditorApprovalBar etc.). Status info is
+           still surfaced inline in pages that need it; on sm+ the
+           floating badge returns at bottom-left. */}
+        <div className="fixed bottom-5 left-5 z-40 hidden sm:block">
           <ApiConnectionBadge connection={connection} />
         </div>
       </div>

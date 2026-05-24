@@ -16,22 +16,23 @@ const STYLE_FOR: Record<
   connected: {
     label: "API connected",
     icon: PlugZap,
-    klass: "border-state-success/30 bg-state-success/10 text-state-success",
+    // Border + text color only — solid backdrop comes from the wrapper.
+    klass: "border-state-success/40 text-state-success",
   },
   worker_stale: {
     label: "Worker stale",
     icon: AlertTriangle,
-    klass: "border-accent-amber/30 bg-accent-amber/10 text-accent-amber",
+    klass: "border-accent-amber/40 text-accent-amber",
   },
   missing_integrations: {
     label: "Integrations missing",
     icon: Radio,
-    klass: "border-accent-amber/30 bg-accent-amber/10 text-accent-amber",
+    klass: "border-accent-amber/40 text-accent-amber",
   },
   fallback: {
     label: "Demo fallback",
     icon: Plug,
-    klass: "border-accent-amber/30 bg-accent-amber/10 text-accent-amber",
+    klass: "border-accent-amber/40 text-accent-amber",
   },
 };
 
@@ -46,12 +47,14 @@ export function ApiConnectionBadge({ connection }: { connection: ApiConnection }
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.18em]",
+        // Solid dark backdrop + blur so scrolled content underneath does
+        // not bleed through the badge on mobile.
+        "inline-flex items-center gap-1.5 rounded-full border bg-bg-base/90 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] shadow-sm backdrop-blur-md sm:px-3 sm:py-1.5 sm:text-[11px]",
         style.klass,
       )}
       title={titleParts.join(" · ")}
     >
-      <Icon className="h-3 w-3" strokeWidth={2.2} />
+      <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5" strokeWidth={2.2} />
       {style.label}
     </div>
   );
