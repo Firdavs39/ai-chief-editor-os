@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     llm_provider: Literal["mock", "anthropic", "openai", "ollama"] = "mock"
+    # Phase 6: fallback provider used by the workflow when the primary
+    # provider fails twice on the same step (i.e. original call + one
+    # validation-aware repair both failed). Empty = no fallback (Phase 5
+    # behaviour). Setting this to the SAME provider as `llm_provider` is
+    # a no-op — the resolver short-circuits identical primary/fallback.
+    llm_provider_fallback: Literal["", "mock", "anthropic", "openai", "ollama"] = ""
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     anthropic_model: str = "claude-opus-4-7"

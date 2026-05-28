@@ -24,12 +24,16 @@ and §10b). Other LLMCallOptions fields are captured for logging only.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
+from pydantic import ValidationError
 from sqlmodel import Session, select
 
 from ...llm import get_llm_provider
+from ...llm.base import LLMProvider
+from ...llm.registry import get_fallback_llm_provider
 from ...models import (
     GenerationArtifact,
     GenerationRun,
@@ -150,20 +154,252 @@ def _build_user_prompt(
 
 
 # ---------------------------------------------------------------------------
+# Validation-aware repair (Phase 5.2)
+# ---------------------------------------------------------------------------
+
+
+def _is_length_only_error(exc: ValidationError) -> bool:
+    """True iff every error in the ValidationError is a length overflow.
+
+    After Phase 5.2 raised the schema limits to platform-real values, length
+    overflows should be rare. When they DO happen the schema is acting as
+    designed (refuses to silently truncate creative content), so we do NOT
+    retry — we surface the error and let the operator decide.
+
+    Non-length errors (enum mismatch, missing required field, score out of
+    range) are model-output bugs that a clarifying retry can usually fix.
+    """
+    errors = exc.errors()
+    if not errors:
+        return False
+    length_types = {"string_too_long", "string_too_short", "too_long", "too_short"}
+    return all(e.get("type") in length_types for e in errors)
+
+
+def _summarize_validation_errors(exc: ValidationError) -> str:
+    """Compact, log-safe summary of a ValidationError.
+
+    No raw payload text. No prompt content. Field names + error types + the
+    pydantic message line (already free of secret values). Capped at 400
+    chars so it fits in safe storage and logs.
+    """
+    parts: list[str] = []
+    for e in exc.errors()[:6]:
+        loc = ".".join(str(x) for x in e.get("loc", ())) or "?"
+        t = e.get("type", "?")
+        msg = (e.get("msg") or "").splitlines()[0][:80]
+        parts.append(f"{loc}:{t}:{msg}")
+    return " | ".join(parts)[:400]
+
+
+def _build_repair_prompt(
+    step_def: StepDef, original_payload: dict[str, Any], exc: ValidationError
+) -> str:
+    """Build a repair user-prompt asking the model to correct its JSON.
+
+    Contains:
+    - step name
+    - structured list of allowed schema field names (from the step's schema)
+    - compact validation-error summary (NO raw model text outside the
+      original payload itself, which the model produced and is free to see)
+    - the original payload, dumped as JSON
+    - the safety footer
+    """
+    schema_props = (step_def.schema or {}).get("properties", {})
+    allowed = list(schema_props.keys())
+    err_summary = _summarize_validation_errors(exc)
+    original_json = json.dumps(original_payload, ensure_ascii=False)[:4000]
+    return (
+        f"Предыдущий JSON для шага `{step_def.name}` не прошёл валидацию.\n"
+        f"Ошибки: {err_summary}\n"
+        f"Разрешённые поля: {allowed}\n"
+        f"Твой предыдущий ответ:\n{original_json}\n\n"
+        "Верни ИСПРАВЛЕННЫЙ JSON, который проходит схему. Только JSON, "
+        "никаких комментариев или ```-блоков. "
+        + prompts.SAFETY_FOOTER
+    )
+
+
+def _merge_deterministic_flags_into_critic(
+    payload: dict[str, Any], artifacts: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """Phase Q v5 (post-R3 supervisor pattern): after the LLM critic
+    returns its judgement, Python re-runs the deterministic AI-tells
+    detector on the same drafts and MERGES findings into the payload.
+
+    This is defense-in-depth — Sierra's "Jiminy Cricket" output-supervisor
+    pattern. The LLM critic SHOULD surface deterministic flags itself
+    (the user prompt instructs it to), but even if it forgets or
+    soft-pedals, this merge guarantees floor-quality flags reach the
+    operator.
+
+    Mutation contract:
+    - slop_count incremented by number of NEW flag categories detected
+      (capped at 9, since hook_grade caps the relevant zone).
+    - length_issues list extended with deterministic-only flags (truncated
+      to the schema's 3-item max).
+    - factual_concerns is NOT mutated — those are editorial judgements,
+      not mechanical AI-tells.
+    """
+    from .ai_tells import analyze_drafts
+
+    tg = artifacts.get("tg_post", {})
+    th = artifacts.get("threads_post", {})
+    rd = artifacts.get("reddit_post", {})
+
+    reports = analyze_drafts(
+        tg_body=str(tg.get("body", "")),
+        threads_body=str(th.get("body", "")),
+        reddit_body=str(rd.get("body", "")),
+    )
+
+    # Collect all flag strings across the three platforms, prefixed by platform.
+    new_flags: list[str] = []
+    new_slop = 0
+    for platform, report in reports.items():
+        new_slop += report.slop_count
+        for flag in report.flags:
+            new_flags.append(f"[{platform}] {flag}")
+
+    # Mutate length_issues — extend with deterministic flags the LLM may
+    # have missed. Cap at schema's max (3 items).
+    existing = list(payload.get("length_issues") or [])
+    existing_set = set(existing)
+    for f in new_flags:
+        if f not in existing_set and len(existing) < 3:
+            existing.append(f)
+            existing_set.add(f)
+    payload["length_issues"] = existing
+
+    # Update slop_count — take the MAX of LLM's value and detector's
+    # count. The LLM may add its own slop observations on top of
+    # mechanical AI-tells, so we don't simply overwrite.
+    llm_slop = int(payload.get("slop_count") or 0)
+    payload["slop_count"] = max(llm_slop, new_slop)
+
+    return payload
+
+
+def _log_artifact_lengths(step_name: str, payload: dict[str, Any]) -> None:
+    """Observability hook (Phase 5.2): record per-field string lengths.
+
+    Lengths only — never the values themselves. Operators can grep logs by
+    `generation.step.lengths` to see field-length distribution over time and
+    spot drift (e.g. Kimi suddenly writing 1400-char rationales).
+    """
+    lengths = {
+        k: len(v) for k, v in payload.items() if isinstance(v, str)
+    }
+    log.info(
+        "generation.step.lengths step=%s lengths=%s",
+        step_name,
+        lengths,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Step executors
 # ---------------------------------------------------------------------------
 
 
+def _call_provider_with_repair(
+    provider: LLMProvider,
+    *,
+    step_def: StepDef,
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float,
+) -> dict[str, Any]:
+    """Run one LLM step on the given provider with validation-aware repair.
+
+    Single attempt model:
+    1. complete_json → raw
+    2. if not dict → ValueError (raised to caller — fallback may try, repair will not)
+    3. validate_payload(raw) → if OK, return validated
+    4. if ValidationError is length-only → re-raise (no repair, no fallback)
+    5. otherwise → repair-prompt → complete_json → validate → return-or-raise
+
+    The caller (Phase 6 wrapper) decides whether to retry the WHOLE thing
+    on a configured fallback provider.
+    """
+    raw_payload = provider.complete_json(
+        system=system_prompt,
+        user=user_prompt,
+        schema=step_def.schema,  # type: ignore[arg-type]
+        temperature=temperature,
+    )
+    if not isinstance(raw_payload, dict):
+        raise ValueError(
+            f"provider returned non-dict payload for {step_def.name}: "
+            f"{type(raw_payload).__name__}"
+        )
+
+    try:
+        validated = validate_payload(step_def.artifact_name, raw_payload)
+        _log_artifact_lengths(step_def.name, validated)
+        return validated
+    except ValidationError as exc:
+        if _is_length_only_error(exc):
+            log.info(
+                "generation.step.length_overflow step=%s provider=%s errors=%s",
+                step_def.name,
+                provider.name,
+                _summarize_validation_errors(exc),
+            )
+            raise
+
+        log.info(
+            "generation.step.repair_attempted step=%s provider=%s errors=%s",
+            step_def.name,
+            provider.name,
+            _summarize_validation_errors(exc),
+        )
+        repair_prompt = _build_repair_prompt(step_def, raw_payload, exc)
+        repaired = provider.complete_json(
+            system=system_prompt,
+            user=repair_prompt,
+            schema=step_def.schema,  # type: ignore[arg-type]
+            temperature=min(temperature, 0.3),
+        )
+        if not isinstance(repaired, dict):
+            raise ValueError(
+                f"repair returned non-dict payload for {step_def.name}: "
+                f"{type(repaired).__name__}"
+            ) from exc
+        validated = validate_payload(step_def.artifact_name, repaired)
+        log.info(
+            "generation.step.repair_succeeded step=%s provider=%s",
+            step_def.name,
+            provider.name,
+        )
+        _log_artifact_lengths(step_def.name, validated)
+        return validated
+
+
 def _execute_llm_step(
     session: Session, run: GenerationRun, step_def: StepDef
-) -> dict[str, Any]:
-    """Run one LLM step and return the validated artifact payload.
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Run one LLM step. Returns (validated_payload, usage_dict).
 
-    The provider's `complete_json` is called with the documented signature
-    (system, user, schema, temperature). LLMCallOptions provides the
-    temperature; other options are deferred to Phase 3+ wiring.
+    `usage_dict` keys: `tokens_in: int | None`, `tokens_out: int | None`,
+    `model: str | None`, `used_fallback: bool`. The workflow persists
+    `tokens_in`/`tokens_out` into `GenerationStep.tokens_in/out` so cost
+    can be computed without storing raw prompts/responses.
+
+    Phase 5.2 added validation-aware repair (one retry on non-length
+    ValidationError with a structured repair prompt). Phase 6 adds an
+    optional fallback provider: if `LLM_PROVIDER_FALLBACK` is set and the
+    primary's full sequence (call + repair) fails on a NON-length error,
+    the workflow makes ONE fresh attempt on the fallback provider for the
+    same step. If the fallback also fails, the ORIGINAL exception is
+    re-raised — operators see the primary's error first.
+
+    Length overflows are NEVER routed to fallback. The schema now matches
+    platform reality; an overflow is a genuine content problem the operator
+    must see, not a parsing artifact that a different provider can paper
+    over.
     """
-    provider = get_llm_provider()
+    primary = get_llm_provider()
     style = _load_style(session)
     cluster = _load_cluster(session, run)
     raw_items = _load_raw_items(session, cluster, limit=5)
@@ -182,22 +418,77 @@ def _execute_llm_step(
         style=style,
     )
     options = options_for_step(
-        provider.name, step_def.name, is_judge=step_def.is_judge
+        primary.name, step_def.name, is_judge=step_def.is_judge
+    )
+    temperature = (
+        options.temperature if options.temperature is not None else 0.7
     )
 
-    raw_payload = provider.complete_json(
-        system=system_prompt,
-        user=user_prompt,
-        schema=step_def.schema,
-        temperature=options.temperature if options.temperature is not None else 0.7,
-    )
-    if not isinstance(raw_payload, dict):
-        raise ValueError(
-            f"provider returned non-dict payload for {step_def.name}: "
-            f"{type(raw_payload).__name__}"
+    def _usage_for(provider: LLMProvider, used_fallback: bool) -> dict[str, Any]:
+        return {
+            "tokens_in": provider.last_input_tokens,
+            "tokens_out": provider.last_output_tokens,
+            "model": provider.last_model,
+            "used_fallback": used_fallback,
+        }
+
+    try:
+        payload = _call_provider_with_repair(
+            primary,
+            step_def=step_def,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature,
         )
+        # Phase Q v5: critic step gets a deterministic flag-merge on top
+        # of the LLM's editorial judgment. Sierra-style output-supervisor.
+        if step_def.name == "critic_red_team":
+            payload = _merge_deterministic_flags_into_critic(payload, artifacts)
+        return payload, _usage_for(primary, used_fallback=False)
+    except ValidationError as primary_exc:
+        # Length-only failures must NEVER fall back. The schema is correct;
+        # the model produced content that exceeds a platform limit. The
+        # operator sees the failure.
+        if _is_length_only_error(primary_exc):
+            raise
 
-    return validate_payload(step_def.artifact_name, raw_payload)
+        fallback = get_fallback_llm_provider()
+        if fallback is None:
+            # No fallback configured — surface the primary's error.
+            raise
+
+        log.info(
+            "generation.step.fallback_attempted step=%s primary=%s fallback=%s",
+            step_def.name,
+            primary.name,
+            fallback.name,
+        )
+        try:
+            payload = _call_provider_with_repair(
+                fallback,
+                step_def=step_def,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=temperature,
+            )
+            log.info(
+                "generation.step.fallback_succeeded step=%s fallback=%s",
+                step_def.name,
+                fallback.name,
+            )
+            if step_def.name == "critic_red_team":
+                payload = _merge_deterministic_flags_into_critic(payload, artifacts)
+            return payload, _usage_for(fallback, used_fallback=True)
+        except Exception as fb_exc:  # noqa: BLE001 — surface the original
+            log.info(
+                "generation.step.fallback_failed step=%s fallback=%s err=%s",
+                step_def.name,
+                fallback.name,
+                type(fb_exc).__name__,
+            )
+            # Re-raise the PRIMARY exception so the run records the
+            # original failure mode; the fallback's failure is in logs.
+            raise primary_exc from fb_exc
 
 
 def _execute_finalizer_step(session: Session, run: GenerationRun) -> dict[str, Any]:
@@ -284,9 +575,15 @@ def advance_one_step(session: Session, run: GenerationRun) -> GenerationRun:
 
     try:
         if step_def.is_llm:
-            payload = _execute_llm_step(session, run, step_def)
+            payload, usage = _execute_llm_step(session, run, step_def)
         else:
             payload = _execute_finalizer_step(session, run)
+            usage = {
+                "tokens_in": None,
+                "tokens_out": None,
+                "model": None,
+                "used_fallback": False,
+            }
 
         artifact = GenerationArtifact(
             run_id=run.id,
@@ -303,6 +600,10 @@ def advance_one_step(session: Session, run: GenerationRun) -> GenerationRun:
         step.duration_ms = int(
             (finished_at - started_at).total_seconds() * 1000
         )
+        # Phase 6: persist token usage so cost can be computed without
+        # storing raw prompts/completions. None values stay None.
+        step.tokens_in = usage["tokens_in"]
+        step.tokens_out = usage["tokens_out"]
         step.updated_at = finished_at
 
         run.step_index = idx + 1

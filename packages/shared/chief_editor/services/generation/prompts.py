@@ -11,7 +11,12 @@ Design rules (per QUALITY_EDITORIAL_WORKFLOW_PLAN.md §9):
   step is the documented exception at 9 fields because it assembles, not
   generates.
 - `editorial_rationale` appears FIRST when a short user-safe explanation is
-  needed (≤ 240 chars, safe to render in UI; NOT private chain-of-thought).
+  needed (≤ 1500 chars, safe to render in UI; NOT private chain-of-thought).
+  Phase 5.2 raised this cap from 240 because Kimi K2.6 wrote honest
+  multi-sentence rationales that legitimately exceeded the old limit.
+- Content-field maxLength values mirror real per-platform API limits
+  (TG=4096, Threads=500, Reddit body=10000, Reddit title=300). The schema
+  must NOT be more generous than the platform itself.
 - Prompts never reference secrets, env-var names, the Vault, or any
   publishing surface.
 """
@@ -21,10 +26,62 @@ from __future__ import annotations
 from typing import Any
 
 from ...models import RawItem, StyleProfile, TrendCluster
+from .editorial_rules import (
+    DEAD_LEVERS,
+    EMOTION_TAXONOMY,
+    EVASION_RULES,
+    HOOK_PATTERNS,
+)
 
 SAFETY_FOOTER = "Do not invent facts. Do not publish. Do not approve."
 
+# Phase Q v4 explicit termination signal — Kimi K2.6 drifts and "thinks
+# out loud" by default; an explicit STOP halves runaway-verbose risk
+# (per Anthropic context-engineering posts + Adam Holter's K2-thinking
+# review, May 2026). Appended to every system prompt at the end.
+_STOP_SIGNAL = (
+    "\n\nВерни строго один JSON-объект по схеме и СТОП. "
+    "Не пиши размышления, не комментируй, не добавляй пояснения после JSON."
+)
+
 _RU_LANG = "ru-RU"
+
+
+def _format_emotion_taxonomy_compact() -> str:
+    """Phase Q v4 trim: name only, NO per-emotion 'when'/'opener_example'.
+    Kimi knows these patterns conceptually — we just need to constrain
+    the field's vocabulary to the 15 canonical keys."""
+    return ", ".join(EMOTION_TAXONOMY.keys())
+
+
+def _format_hook_patterns_compact() -> str:
+    """Phase Q v4 trim: name + 1-line skeleton, NO inline examples.
+    Cuts ~60% of token weight while keeping pattern semantics. The
+    model can derive examples from the name + skeleton."""
+    lines = []
+    for key, val in HOOK_PATTERNS.items():
+        lines.append(f"- {key}: {val['skeleton']}")
+    return "\n".join(lines)
+
+
+def _format_evasion_rules() -> str:
+    """The 10 numbered writer-evasion rules from research. KEPT in full —
+    these are the core mechanical guidance and removing them degrades
+    quality directly."""
+    return "\n".join(f"{i+1}. {r}" for i, r in enumerate(EVASION_RULES))
+
+
+# Module-level pre-formatted strings — built once, reused across every
+# prompt call. Saves tokens vs rebuilding per request.
+#
+# Phase Q v4 (post-validation-failures): trimmed system prompts to free
+# Kimi from "instruction-stacking paralysis". The 51-phrase banned-tells
+# list is NOT injected into the prompt anymore — the deterministic
+# detector in ai_tells.py catches them post-generation regardless.
+_EMOTION_TAXONOMY_TEXT = _format_emotion_taxonomy_compact()
+_HOOK_PATTERNS_TEXT = _format_hook_patterns_compact()
+_EVASION_RULES_TEXT = _format_evasion_rules()
+_DEAD_LEVERS_TEXT = ", ".join(DEAD_LEVERS)
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +138,7 @@ def _editorial_role_preamble(role_ru: str) -> str:
 
 
 def _safety_block() -> str:
-    return f"\n\n{SAFETY_FOOTER}"
+    return f"\n\n{SAFETY_FOOTER}{_STOP_SIGNAL}"
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +155,7 @@ SCHEMA_RESEARCH_BRIEF: dict[str, Any] = {
         "gaps",
     ],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "fact_bullets": {
             "type": "array",
             "items": {"type": "string"},
@@ -127,7 +184,7 @@ SCHEMA_ANGLE: dict[str, Any] = {
         "why_now",
     ],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "primary_angle": {"type": "string"},
         "contrarian_take": {"type": "string"},
         "why_now": {"type": "string"},
@@ -143,7 +200,7 @@ SCHEMA_PSYCH: dict[str, Any] = {
         "cognitive_bias_lever",
     ],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "target_emotion": {"type": "string"},
         "hook_pattern": {"type": "string"},
         "cognitive_bias_lever": {"type": "string"},
@@ -159,7 +216,7 @@ SCHEMA_VOICE_BRIEF: dict[str, Any] = {
         "must_avoid",
     ],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "sentence_length_target": {"type": "string"},
         "vocab_lane": {"type": "string"},
         "must_avoid": {
@@ -174,9 +231,9 @@ SCHEMA_TG_POST: dict[str, Any] = {
     "type": "object",
     "required": ["editorial_rationale", "body", "hook", "cta"],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
-        "body": {"type": "string", "maxLength": 1024},
-        "hook": {"type": "string", "maxLength": 80},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
+        "body": {"type": "string", "maxLength": 4096},
+        "hook": {"type": "string", "maxLength": 160},
         "cta": {"type": "string"},
     },
 }
@@ -185,7 +242,7 @@ SCHEMA_THREADS_POST: dict[str, Any] = {
     "type": "object",
     "required": ["editorial_rationale", "body", "cta"],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "body": {"type": "string", "maxLength": 500},
         "cta": {"type": "string"},
     },
@@ -195,9 +252,9 @@ SCHEMA_REDDIT_POST: dict[str, Any] = {
     "type": "object",
     "required": ["editorial_rationale", "title", "body", "cta"],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "title": {"type": "string", "maxLength": 300},
-        "body": {"type": "string", "maxLength": 1500},
+        "body": {"type": "string", "maxLength": 10000},
         "cta": {"type": "string"},
     },
 }
@@ -212,7 +269,7 @@ SCHEMA_CRITIC_REPORT: dict[str, Any] = {
         "hook_grade",
     ],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "slop_count": {"type": "integer", "minimum": 0},
         "factual_concerns": {
             "type": "array",
@@ -244,14 +301,14 @@ SCHEMA_FINAL_BRIEF: dict[str, Any] = {
         "cta",
     ],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "topic": {"type": "string"},
-        "source_summary": {"type": "string", "maxLength": 400},
-        "why_it_matters": {"type": "string", "maxLength": 300},
-        "psychology_hook": {"type": "string", "maxLength": 200},
-        "final_tg": {"type": "string", "maxLength": 1024},
+        "source_summary": {"type": "string", "maxLength": 2000},
+        "why_it_matters": {"type": "string", "maxLength": 1500},
+        "psychology_hook": {"type": "string", "maxLength": 1500},
+        "final_tg": {"type": "string", "maxLength": 4096},
         "final_threads": {"type": "string", "maxLength": 500},
-        "final_reddit": {"type": "string", "maxLength": 1500},
+        "final_reddit": {"type": "string", "maxLength": 10000},
         "cta": {"type": "string"},
     },
 }
@@ -267,7 +324,7 @@ SCHEMA_QUALITY_REPORT: dict[str, Any] = {
         "recommendation",
     ],
     "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 240},
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
         "style_match_score": {"type": "number", "minimum": 0, "maximum": 1},
         "viral_score": {"type": "number", "minimum": 0, "maximum": 1},
         "slop_risk": {"type": "number", "minimum": 0, "maximum": 1},
@@ -285,12 +342,31 @@ SCHEMA_QUALITY_REPORT: dict[str, Any] = {
 # ---------------------------------------------------------------------------
 
 
+_RATIONALE_RULE = (
+    "Поле editorial_rationale — короткий публичный editorial summary "
+    "(≤1500 символов, обычно 200–800). Это объяснение твоего выбора для "
+    "редактора, безопасное для показа в UI. НЕ chain-of-thought, не пересказ "
+    "контента, не служебные размышления."
+)
+
+# Phase Q v7 — anti-example sketch for writer prompts (R3 finding: positive
+# examples define center of target, negative examples define edges).
+# ONE compact line per writer prompt — Anthropic skill-creator Bad/Good pattern.
+# Sourced from R2's anti-example fingerprint (May 2026 verified).
+_WRITER_ANTI_EXAMPLE = (
+    "❌ Анти-пример (НЕ пиши так): «В современном мире AI меняет всё. "
+    "Стоит отметить ключевую роль данных технологий. Подписывайтесь, "
+    "чтобы не пропустить разбор!» — empty opening + АИ-штампы + generic "
+    "anti-CTA. ✓ Пиши конкретику: имя/дата/цифра с дробью + одна "
+    "screenshottable строка ≤60 символов + анти-CTA или открытый вопрос."
+)
+
+
 def system_research_analyst(style: StyleProfile | None) -> str:
     return (
         _editorial_role_preamble("главный аналитик-исследователь")
         + " Анализируешь сигналы из источников, выделяешь факты, источники и пробелы. "
-        "Заполни поле editorial_rationale (≤240 символов) — короткое объяснение, "
-        "которое можно показать редактору в UI; никаких внутренних рассуждений."
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
@@ -300,17 +376,24 @@ def system_trend_strategist(style: StyleProfile | None) -> str:
     return (
         _editorial_role_preamble("стратег по трендам")
         + " На основе фактов формулируешь основной угол, контр-тейк и причину «почему сейчас». "
-        "editorial_rationale — краткое объяснение выбора, безопасно для UI."
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
 
 
 def system_audience_psychology(style: StyleProfile | None) -> str:
+    """Phase Q v4 (trimmed): названия таксономий + формат без длинных пояснений."""
     return (
         _editorial_role_preamble("аналитик психологии аудитории")
-        + " Выявляешь целевую эмоцию, паттерн крючка и когнитивный «рычаг». "
-        "editorial_rationale — UI-safe резюме."
+        + " Задача: называть недовысказанную мысль читателя, не инъекция biases. "
+        "Цель — узнавание, не убеждение.\n\n"
+        f"target_emotion: одно из {{{_EMOTION_TAXONOMY_TEXT}}}.\n"
+        "hook_pattern: один из:\n"
+        + _HOOK_PATTERNS_TEXT
+        + "\ncognitive_bias_lever: формат «<bias> via <mechanism> at <click_position>», ≤25 слов.\n"
+        f"Запрещены мёртвые рычаги: {_DEAD_LEVERS_TEXT}.\n"
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
@@ -320,48 +403,81 @@ def system_style_dna_editor(style: StyleProfile | None) -> str:
     return (
         _editorial_role_preamble("редактор Style DNA")
         + " Переводишь психологические рекомендации в правила голоса: целевая длина "
-        "предложений, словарная полоса, чего избегать. editorial_rationale — UI-safe."
+        "предложений, словарная полоса, чего избегать. "
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
 
 
 def system_platform_writer_telegram(style: StyleProfile | None) -> str:
+    """Phase Q v4 (trimmed) + v7 (anti-example): 10 evasion rules +
+    hook-pattern names + ONE Bad/Good anti-example pair (R3 finding).
+    Banned-phrase list is OUT of the prompt — deterministic detector
+    catches them post-generation."""
     return (
-        _editorial_role_preamble("райтер для Telegram")
-        + " Пишешь пост ≤ 1024 символа, с сильным крючком в первых 80 символах и "
-        "конкретным CTA. editorial_rationale — UI-safe объяснение выбора крючка."
+        _editorial_role_preamble("райтер для Telegram (RU pro, май 2026)")
+        + " Лимит 4096 chars, engagement-оптимум 800-1500. Короче — лучше.\n\n"
+        "ПРАВИЛА:\n"
+        + _EVASION_RULES_TEXT
+        + "\n\nВыбери ОДИН hook_pattern (не смешивай):\n"
+        + _HOOK_PATTERNS_TEXT
+        + f"\n\n{_WRITER_ANTI_EXAMPLE}\n"
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
 
 
 def system_platform_writer_threads(style: StyleProfile | None) -> str:
+    """Phase Q v4 (trimmed): no banned-list inline (detector catches)."""
     return (
-        _editorial_role_preamble("райтер для Threads")
-        + " Пишешь короткий пост ≤ 500 символов под Threads, с CTA. "
-        "editorial_rationale — UI-safe."
+        _editorial_role_preamble("райтер для Threads (RU pro)")
+        + " Лимит 500 chars, engagement-оптимум 180-380. "
+        "Завершай открытым вопросом — алгоритм оптимизирует reply-chain, не лайки.\n\n"
+        "Правила: open конкретной деталью (имя/число/сцена); ОДНО короткое предложение "
+        "до 6 слов; ОДНО длинное от 25; минимум одна локатируемая конкретика; "
+        "конец — открытый вопрос конкретному читателю.\n\n"
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
 
 
 def system_platform_writer_reddit(style: StyleProfile | None) -> str:
+    """Phase Q v4 (trimmed) + v7 (anti-example)."""
     return (
-        _editorial_role_preamble("райтер для Reddit")
-        + " Делаешь заголовок (≤300) и тело поста (≤1500) под Reddit-сообщество. "
-        "Можешь писать по-русски или по-английски — следуй языку источника. "
-        "editorial_rationale — UI-safe."
+        _editorial_role_preamble("райтер для Reddit (RU + EN)")
+        + " title 60-90 chars (полное утверждение/вопрос, без clickbait), "
+        "body 800-2000. TL;DR в конце, не в начале (RU-конвенция 2026). "
+        "Язык — по источнику.\n\n"
+        "ПРАВИЛА:\n"
+        + _EVASION_RULES_TEXT
+        + f"\n\n{_WRITER_ANTI_EXAMPLE}\n"
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
 
 
 def system_critic_red_team(style: StyleProfile | None) -> str:
+    """Phase Q v4 (trimmed). Critic receives deterministic_flags via user
+    prompt — they ARE the floor. LLM adds editorial judgment on top."""
     return (
-        _editorial_role_preamble("критик / red team")
-        + " Проверяешь черновики на штампы (slop), фактические сомнения, проблемы "
-        "длины и силу крючка (0-10). editorial_rationale — UI-safe резюме."
+        _editorial_role_preamble("критик / red team (RU 2026)")
+        + " Оцениваешь TG/Threads/Reddit драфты. user-промпт включает "
+        "deterministic_flags от Python-детектора — они ОБЯЗАНЫ попасть в "
+        "length_issues или factual_concerns и поднять slop_count.\n\n"
+        "Сверху добавляешь editorial-флаги:\n"
+        "1. Слабый крючок (первые 1-2 строки не останавливают скролл)\n"
+        "2. Mismatch emotion_target vs текст (psych сказал validated_cynicism — "
+        "а тон cheerleading)\n"
+        "3. Нет конкретного якоря (имя, дата, цифра с дробью)\n"
+        "4. Wrap-up концовка-пересказ\n"
+        "5. Симметричные тройки «X, Y и Z»\n"
+        "6. Em-dash flood\n\n"
+        "hook_grade 0-10: 0-3 серый, 4-6 средний, 7-8 сильный, 9-10 выдающийся.\n"
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
@@ -373,19 +489,38 @@ def system_editor_in_chief_draft(style: StyleProfile | None) -> str:
         + " Собираешь финальный brief: подбираешь лучшие версии Telegram/Threads/Reddit, "
         "формулируешь topic / source_summary / why_it_matters / psychology_hook / cta. "
         "Не публикуешь и не одобряешь — ты только собираешь. "
-        "editorial_rationale — UI-safe."
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
 
 
 def system_quality_judge(style: StyleProfile | None) -> str:
+    """Phase Q: calibrated score thresholds. Drafts with deterministic AI-tells
+    flagged by the critic step cannot score >0.7 viral_score regardless of
+    editorial polish — the floor checks ARE the floor."""
     return (
-        _editorial_role_preamble("Quality Judge")
-        + " Оцениваешь финальный brief по четырём метрикам (0..1): style_match_score, "
-        "viral_score, slop_risk, controversy_risk. Выдаёшь recommendation: "
-        "approve | revise | reject. Эта recommendation — это рекомендация редактору, "
-        "а не реальное одобрение в продукте. editorial_rationale — UI-safe."
+        _editorial_role_preamble("Quality Judge (RU editorial 2026)")
+        + " Оцениваешь финальный brief по четырём метрикам (0..1) и выдаёшь "
+        "recommendation: approve | revise | reject.\n\n"
+        "КАЛИБРОВКА score-ов:\n"
+        "- style_match_score: 0.0 = чужой голос, 0.5 = generic SMM, "
+        "0.7 = соответствует Style DNA, 0.9 = воспроизводит фирменный приём.\n"
+        "- viral_score: 0.0 = пройдут мимо, 0.5 = прочитают и забудут, "
+        "0.7 = сохранят, 0.85+ = перешлют (требует крючка из 8 паттернов И "
+        "конкретного якоря).\n"
+        "- slop_risk: 0.0 = читается как человек, 0.3 = есть лёгкие AI-следы, "
+        "0.5 = заметные штампы, 0.8+ = очевидно AI. ОБЯЗАТЕЛЬНО учитывай "
+        "deterministic_flags из critic_report.\n"
+        "- controversy_risk: 0.0 = безопасно, 0.5 = вызовет диалог, "
+        "0.8+ = риск репутации.\n\n"
+        "Recommendation logic:\n"
+        "- approve: viral≥0.75 И slop_risk≤0.30 И controversy_risk≤0.55\n"
+        "- revise: иначе, если slop_risk≤0.50 (исправимо)\n"
+        "- reject: slop_risk>0.50 ИЛИ controversy_risk>0.75\n\n"
+        "Эта recommendation — рекомендация редактору, не автоматическое "
+        "одобрение в продукте.\n"
+        + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
     )
@@ -417,7 +552,7 @@ def user_trend_strategist(
         f"Research brief:\n{rb}\n"
         f"Score breakdown: {score}\n\n"
         "Сформируй: primary_angle (основной угол), contrarian_take (контр-тейк, "
-        "если уместен), why_now (почему сейчас). editorial_rationale ≤ 240 симв. "
+        "если уместен), why_now (почему сейчас). editorial_rationale ≤ 1500 симв. "
         + SAFETY_FOOTER
     )
 
@@ -428,7 +563,7 @@ def user_audience_psychology(artifacts: dict, style: StyleProfile | None) -> str
     return (
         f"Angle: {angle}\nAudience: {audience}\n\n"
         "Определи target_emotion, hook_pattern, cognitive_bias_lever. "
-        "editorial_rationale ≤ 240. " + SAFETY_FOOTER
+        "editorial_rationale ≤ 1500. " + SAFETY_FOOTER
     )
 
 
@@ -438,7 +573,7 @@ def user_style_dna_editor(artifacts: dict, style: StyleProfile | None) -> str:
         f"Psych brief: {psych}\nStyle: {_format_style(style)}\n\n"
         "Дай: sentence_length_target (например, «короткие, 8-14 слов»), "
         "vocab_lane («экспертный, без жаргона»), must_avoid (≤5). "
-        "editorial_rationale ≤ 240. " + SAFETY_FOOTER
+        "editorial_rationale ≤ 1500. " + SAFETY_FOOTER
     )
 
 
@@ -454,14 +589,39 @@ def user_platform_writer(artifacts: dict, platform: str, *, style: StyleProfile 
 
 
 def user_critic_red_team(artifacts: dict) -> str:
+    """Phase Q: prepends deterministic AI-tells flags to the critic's user
+    prompt so the LLM critic can see what Python already caught."""
+    from .ai_tells import analyze_drafts
+
     tg = artifacts.get("tg_post", {})
     th = artifacts.get("threads_post", {})
     rd = artifacts.get("reddit_post", {})
+
+    # Deterministic floor checks — these MUST land in slop_count / length_issues
+    # because they're already proven by Python.
+    tells = analyze_drafts(
+        tg_body=str(tg.get("body", "")),
+        threads_body=str(th.get("body", "")),
+        reddit_body=str(rd.get("body", "")),
+    )
+    flag_lines = []
+    for platform, report in tells.items():
+        if report.flags:
+            for flag in report.flags:
+                flag_lines.append(f"  [{platform}] {flag}")
+    deterministic_block = (
+        "DETERMINISTIC FLAGS (auto-detected, MUST surface in critic_report):\n"
+        + ("\n".join(flag_lines) if flag_lines else "  (none — floor checks passed)")
+    )
+
     return (
         f"Telegram: {tg}\nThreads: {th}\nReddit: {rd}\n\n"
-        "Прогон red-team: slop_count (число штампов), factual_concerns (≤3 "
-        "пункта), length_issues (≤3), hook_grade (0-10). "
-        "editorial_rationale ≤ 240. " + SAFETY_FOOTER
+        + deterministic_block
+        + "\n\nПрогон red-team: slop_count (число штампов + deterministic flags), "
+        "factual_concerns (≤3), length_issues (≤3 — включая deterministic), "
+        "hook_grade (0-10). Если deterministic flags не пусты — slop_count "
+        "ОБЯЗАН быть ≥ числу флагов. editorial_rationale ≤ 1500. "
+        + SAFETY_FOOTER
     )
 
 
@@ -477,10 +637,10 @@ def user_editor_in_chief_draft(artifacts: dict) -> str:
         f"Research: {rb}\nAngle: {angle}\nPsych: {psych}\n"
         f"Telegram draft: {tg}\nThreads draft: {th}\nReddit draft: {rd}\n"
         f"Critic report: {critic}\n\n"
-        "Собери final_brief: topic, source_summary (≤400), why_it_matters (≤300), "
-        "psychology_hook (≤200), final_tg (≤1024), final_threads (≤500), "
-        "final_reddit (≤1500), cta. Учти замечания критика. "
-        "editorial_rationale ≤ 240. " + SAFETY_FOOTER
+        "Собери final_brief: topic, source_summary (≤2000), why_it_matters (≤1500), "
+        "psychology_hook (≤1500), final_tg (≤4096, цель 600–1500), "
+        "final_threads (≤500), final_reddit (≤10000, цель 800–3000), cta. "
+        "Учти замечания критика. editorial_rationale ≤ 1500. " + SAFETY_FOOTER
     )
 
 
@@ -492,7 +652,7 @@ def user_quality_judge(artifacts: dict) -> str:
         "Оцени: style_match_score, viral_score, slop_risk, controversy_risk "
         "(все в [0, 1]), recommendation ∈ {approve, revise, reject}. "
         "Помни: recommendation — это рекомендация редактору, НЕ автоматическое "
-        "одобрение в продукте. editorial_rationale ≤ 240. " + SAFETY_FOOTER
+        "одобрение в продукте. editorial_rationale ≤ 1500. " + SAFETY_FOOTER
     )
 
 

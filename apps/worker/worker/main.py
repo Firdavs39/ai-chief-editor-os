@@ -103,39 +103,59 @@ async def generation_loop(stop: asyncio.Event) -> None:
     while not stop.is_set():
         try:
             with session_scope() as session:
-                # find top clusters without a draft candidate in the last 24h
-                clusters = list(
-                    session.exec(
-                        select(TrendCluster)
-                        .order_by(TrendCluster.total_score.desc())
-                        .limit(5)
-                    ).all()
-                )
-                generated = 0
-                fresh_cutoff = utcnow() - timedelta(hours=24)
-                for cluster in clusters:
-                    recent = session.exec(
-                        select(PostCandidate).where(
-                            (PostCandidate.cluster_id == cluster.id)
-                            & (PostCandidate.created_at >= fresh_cutoff)
-                        )
-                    ).first()
-                    if recent is not None:
-                        continue
-                    generate_for_cluster(session, cluster)
-                    generated += 1
-                if generated:
-                    session.add(
-                        SystemLog(
-                            level="info",
-                            event="generator.tick",
-                            message=f"generated={generated}",
-                            data={"generated": generated},
-                        )
+                # Phase Q TD-1 fix: skip the legacy single-shot generation
+                # tick when a Phase 5.2+ workflow run is in flight. Both
+                # paths call Kimi synchronously and share the worker
+                # thread; running them concurrently blocks the workflow
+                # for the duration of the legacy Kimi call (observed up
+                # to 30 min in Phase Q v7 validation).
+                active_run = session.exec(
+                    select(GenerationRun).where(
+                        GenerationRun.status.in_(["queued", "running"])  # type: ignore[attr-defined]
+                    ).limit(1)
+                ).first()
+                if active_run is not None:
+                    log.info(
+                        "generation_loop skipped — Phase 5.2+ run %s "
+                        "in flight (status=%s)",
+                        active_run.id,
+                        active_run.status,
                     )
-                    session.commit()
-                _heartbeat(session, "generation", event="generator.tick")
-                log.info("generation tick: %d new", generated)
+                    _heartbeat(session, "generation", event="generator.skipped")
+                else:
+                    # find top clusters without a draft candidate in the last 24h
+                    clusters = list(
+                        session.exec(
+                            select(TrendCluster)
+                            .order_by(TrendCluster.total_score.desc())
+                            .limit(5)
+                        ).all()
+                    )
+                    generated = 0
+                    fresh_cutoff = utcnow() - timedelta(hours=24)
+                    for cluster in clusters:
+                        recent = session.exec(
+                            select(PostCandidate).where(
+                                (PostCandidate.cluster_id == cluster.id)
+                                & (PostCandidate.created_at >= fresh_cutoff)
+                            )
+                        ).first()
+                        if recent is not None:
+                            continue
+                        generate_for_cluster(session, cluster)
+                        generated += 1
+                    if generated:
+                        session.add(
+                            SystemLog(
+                                level="info",
+                                event="generator.tick",
+                                message=f"generated={generated}",
+                                data={"generated": generated},
+                            )
+                        )
+                        session.commit()
+                    _heartbeat(session, "generation", event="generator.tick")
+                    log.info("generation tick: %d new", generated)
         except Exception as exc:  # noqa: BLE001
             log.exception("generation loop error: %s", exc)
         try:
@@ -202,7 +222,14 @@ def _generation_runs_tick(session: Session, *, limit: int = 3) -> int:
 
 async def generation_runs_loop(stop: asyncio.Event) -> None:
     settings = get_settings()
-    interval = max(15, settings.generate_interval_seconds // 8)
+    # Phase Q TD-7 fix: hard-cap the Phase 5.2+ workflow tick interval at
+    # 90 seconds regardless of generate_interval_seconds. Previously this
+    # was `generate_interval_seconds // 8`, which coupled the workflow's
+    # step-advance cadence to the legacy generation_loop's cadence. When
+    # an operator slowed the legacy loop (e.g. set GENERATE_INTERVAL_SECONDS
+    # to 86400 to defang it after TD-1), the workflow ticker also slowed
+    # to 3 hours/step, blocking active runs.
+    interval = max(15, min(90, settings.generate_interval_seconds // 8))
     while not stop.is_set():
         try:
             with session_scope() as session:

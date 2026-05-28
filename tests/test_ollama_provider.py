@@ -299,6 +299,50 @@ def test_ollama_provider_refuses_empty_api_key() -> None:
         OllamaProvider(base_url="https://ollama.com", api_key="")
 
 
+def test_ollama_provider_uses_phase_q_final_timeout_defaults() -> None:
+    """Phase Q final calibration (operator decision: quality over token
+    optimization). Per-call timeout 30 min × 1 retry = 60 min worst case
+    per step. Big enough for verbose Kimi runs."""
+    assert OllamaProvider.DEFAULT_TIMEOUT_SECONDS == 1800.0
+    assert OllamaProvider.DEFAULT_MAX_RETRIES == 1
+
+
+def test_ollama_provider_max_tokens_calibrated_to_phase_q_v3() -> None:
+    """Phase Q final v3 calibration. v1 at 4096 truncated normal output;
+    v2 at 8192 succeeded once but editor_in_chief_draft step (largest
+    artifact) hit verbose-runaway at unbounded (32K cap = effectively
+    unbounded) and timed out. 16384 is the calibrated middle:
+    - 3× Phase 7's max legitimate step output (5.7K tokens)
+    - Below the 31K verbose-runaway observed on Phase Q v1 telegram step
+    - ~50K Russian chars ≈ 2× the largest artifact (final_brief)"""
+    assert OllamaProvider.DEFAULT_MAX_TOKENS == 16384
+
+
+def test_ollama_provider_accepts_explicit_overrides() -> None:
+    """Operators can tune timeout/retries/max_tokens per environment
+    without monkey-patching the class defaults."""
+    p = OllamaProvider(
+        base_url="https://ollama.com",
+        api_key="ollama_FAKE",
+        model="kimi-test",
+        timeout_seconds=120.0,
+        max_retries=0,
+        max_tokens=1024,
+    )
+    assert p._client.timeout == 120.0
+    assert p._client.max_retries == 0
+    assert p._max_tokens == 1024
+
+
+def test_ollama_provider_passes_max_tokens_to_api_call() -> None:
+    """The configured max_tokens reaches every chat.completions.create call."""
+    p = _ollama(['{"ok": true}'])
+    p._max_tokens = 2048
+    p.complete_json("sys", "user", {"type": "object"})
+    sent = p._client.chat.completions.calls[0]
+    assert sent["max_tokens"] == 2048
+
+
 # ---------------------------------------------------------------------------
 # /brief/generate safety with ollama provider
 # ---------------------------------------------------------------------------

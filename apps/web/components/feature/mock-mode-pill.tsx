@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 export function MockModePill({ active = true }: { active?: boolean }) {
   if (!active) return null;
   return (
-    <div className="fixed bottom-3 right-3 sm:bottom-5 sm:right-5 z-40">
+    <div className="fixed bottom-5 right-5 z-40 hidden sm:block">
       <div className={cn(
         "flex items-center gap-1.5 sm:gap-2 rounded-full border border-accent-cyan/30 bg-bg-base/80 px-2.5 py-1 sm:px-3 sm:py-1.5 backdrop-blur-md",
         "shadow-glow-cyan",

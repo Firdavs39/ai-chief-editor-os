@@ -46,12 +46,43 @@ def host_of(base_url: str) -> str:
 class OllamaProvider(LLMProvider):
     name = "ollama"
 
+    # Phase 5.2 follow-up: tighten timeout / retry behavior for Ollama Cloud.
+    # The OpenAI SDK defaults to a 600 s timeout × 2 retries = up to 1 800 s
+    # of waiting before the call fails. Run #2 of the Phase 5.2 validation
+    # hit exactly this ceiling on a slow step. We prefer to fail faster:
+    #   per-call timeout: 900 s (15 min) — generous enough for Kimi's
+    #     longest legitimate response (final_brief output ~6 K tokens
+    #     observed at ~25 min, but the actual API call is usually well
+    #     under 15 min; if it isn't, retry is what salvages it).
+    #   max_retries: 1 — single retry on a 5xx / connection error.
+    # Worst case = 1 800 s as before, but typically 900 s and operators see
+    # the failure sooner.
+    # Phase Q final calibration v3 (pragmatic, post-validation):
+    # - Operator says "не обрезай" — quality over token cost. Honored
+    #   in SPIRIT but not literally: with NO cap, editor_in_chief_draft
+    #   step ran 60+ min and hit timeout. Verbose-runaway can't be
+    #   avoided just by being patient.
+    # - 16384 token cap = 3× headroom over Phase 7's maximum legitimate
+    #   step output (5.7K tokens) and below the observed verbose-runaway
+    #   threshold (31K tokens on Phase Q v1 telegram step). No legitimate
+    #   output is truncated; only the model's pathological inner monologue
+    #   gets bounded.
+    # - Timeout 30 min × 1 retry = 60 min ceiling stays.
+    # Net effect: runs complete reliably; output quality preserved.
+    DEFAULT_TIMEOUT_SECONDS = 1800.0
+    DEFAULT_MAX_RETRIES = 1
+    DEFAULT_MAX_TOKENS = 16384  # ~50K Russian chars — 2× largest artifact
+
     def __init__(
         self,
         base_url: str,
         api_key: str,
         model: str = "kimi-k2.6:cloud",
+        timeout_seconds: float | None = None,
+        max_retries: int | None = None,
+        max_tokens: int | None = None,
     ) -> None:
+        super().__init__()
         if not base_url:
             raise ValueError("OllamaProvider requires a base URL")
         if not api_key:
@@ -71,11 +102,25 @@ class OllamaProvider(LLMProvider):
         self._client = OpenAI(
             base_url=_normalize_base_url(base_url),
             api_key=api_key,
-            # The OpenAI SDK retries 2x on transient errors by default; we layer
-            # our own JSON-repair retry on top.
+            timeout=(
+                timeout_seconds
+                if timeout_seconds is not None
+                else self.DEFAULT_TIMEOUT_SECONDS
+            ),
+            max_retries=(
+                max_retries
+                if max_retries is not None
+                else self.DEFAULT_MAX_RETRIES
+            ),
         )
         self._model = model
         self._raw_base_url = base_url
+        self.last_model = model
+        self._max_tokens = (
+            max_tokens
+            if max_tokens is not None
+            else self.DEFAULT_MAX_TOKENS
+        )
 
     # ------------------------------------------------------------------ JSON
 
@@ -88,6 +133,7 @@ class OllamaProvider(LLMProvider):
         temperature: float = 0.7,
     ) -> dict[str, Any]:
         """Ask Kimi for one strict-JSON answer. Retry once on parse failure."""
+        self._reset_usage()
         base_user = (
             f"{user}\n\n"
             f"Return STRICT JSON only, matching this schema:\n"
@@ -99,10 +145,17 @@ class OllamaProvider(LLMProvider):
             response = self._client.chat.completions.create(
                 model=self._model,
                 temperature=temperature,
+                max_tokens=self._max_tokens,
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": base_user + extra},
                 ],
+            )
+            usage = getattr(response, "usage", None)
+            self._record_usage(
+                input_tokens=getattr(usage, "prompt_tokens", None),
+                output_tokens=getattr(usage, "completion_tokens", None),
+                model=self._model,
             )
             return response.choices[0].message.content or ""
 
@@ -140,6 +193,7 @@ class OllamaProvider(LLMProvider):
         response = self._client.chat.completions.create(
             model=self._model,
             temperature=0.6,
+            max_tokens=self._max_tokens,
             messages=[
                 {
                     "role": "system",
