@@ -108,7 +108,9 @@ class GenerationArtifact(TimestampedBase, table=True):
 
     # Canonical step output JSON. Storage contract:
     # - Only fields defined by the step's prompt schema.
-    # - May include an `editorial_rationale` field (<= 240 chars, user-safe).
+    # - May include an `editorial_rationale` field (<= 1500 chars, user-safe;
+    #   raised from 240 in Phase 5.2 — enough for a paragraph, too small to
+    #   smuggle hidden chain-of-thought; enforced by the artifact pydantic).
     # - MUST NOT include raw model text, hidden chain-of-thought, or
     #   private reasoning beyond the bounded `editorial_rationale`.
     payload: dict[str, Any] = Field(

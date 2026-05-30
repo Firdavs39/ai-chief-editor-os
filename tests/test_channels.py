@@ -14,7 +14,24 @@ so the migration does NOT run automatically — tests opt in explicitly.
 
 from __future__ import annotations
 
+import pytest
 from sqlmodel import select
+
+from chief_editor.settings import get_settings
+
+# Mutating /channels endpoints are admin-token gated (changing target_chat_id
+# redirects approved content). Read endpoints stay open.
+_ADMIN_TOKEN = "test-admin-token-do-not-leak"
+_HDR = {"X-Admin-Token": _ADMIN_TOKEN}
+
+
+@pytest.fixture()
+def admin(monkeypatch):
+    """Unlock admin-gated /channels write endpoints for the test client."""
+    monkeypatch.setenv("ADMIN_TOKEN", _ADMIN_TOKEN)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 from chief_editor.models import (
     Channel,
@@ -533,11 +550,12 @@ def test_api_seed_creates_default_channel(client) -> None:
     assert len(default["source_ids"]) >= 1
 
 
-def test_api_create_channel(client) -> None:
+def test_api_create_channel(client, admin) -> None:
     client.post("/demo/seed")
     res = client.post(
         "/channels",
         json={"name": "Second Channel", "target_chat_id": "@second", "lang": "ru"},
+        headers=_HDR,
     )
     assert res.status_code == 201, res.text
     body = res.json()
@@ -547,19 +565,27 @@ def test_api_create_channel(client) -> None:
     assert body["target_chat_id"] == "@second"
 
 
-def test_api_create_channel_rejects_duplicate_slug(client) -> None:
+def test_api_create_channel_requires_admin_token(client, admin) -> None:
+    """Mutating /channels endpoints reject requests without the admin token."""
     client.post("/demo/seed")
-    client.post("/channels", json={"name": "Dup", "slug": "dup"})
-    res = client.post("/channels", json={"name": "Dup2", "slug": "dup"})
+    res = client.post("/channels", json={"name": "NoToken", "target_chat_id": "@x"})
+    assert res.status_code == 401
+
+
+def test_api_create_channel_rejects_duplicate_slug(client, admin) -> None:
+    client.post("/demo/seed")
+    client.post("/channels", json={"name": "Dup", "slug": "dup"}, headers=_HDR)
+    res = client.post("/channels", json={"name": "Dup2", "slug": "dup"}, headers=_HDR)
     assert res.status_code == 409
 
 
-def test_api_patch_channel_updates_target_and_style(client) -> None:
+def test_api_patch_channel_updates_target_and_style(client, admin) -> None:
     client.post("/demo/seed")
-    created = client.post("/channels", json={"name": "Patchable"}).json()
+    created = client.post("/channels", json={"name": "Patchable"}, headers=_HDR).json()
     res = client.patch(
         f"/channels/{created['id']}",
         json={"target_chat_id": "@new_target", "enabled": False},
+        headers=_HDR,
     )
     assert res.status_code == 200
     body = res.json()
@@ -567,46 +593,66 @@ def test_api_patch_channel_updates_target_and_style(client) -> None:
     assert body["enabled"] is False
 
 
-def test_api_cannot_disable_default_channel(client) -> None:
+def test_api_cannot_disable_default_channel(client, admin) -> None:
     client.post("/demo/seed")
     default = next(c for c in client.get("/channels").json() if c["is_default"])
-    res = client.patch(f"/channels/{default['id']}", json={"enabled": False})
+    res = client.patch(
+        f"/channels/{default['id']}", json={"enabled": False}, headers=_HDR
+    )
     assert res.status_code == 409
 
 
-def test_api_attach_and_detach_source(client) -> None:
+def test_api_attach_and_detach_source(client, admin) -> None:
     client.post("/demo/seed")
-    channel = client.post("/channels", json={"name": "Linker"}).json()
+    channel = client.post("/channels", json={"name": "Linker"}, headers=_HDR).json()
     assert channel["source_ids"] == []
 
     # Pick an existing seeded source.
     src = client.get("/sources").json()[0]
-    res = client.post(f"/channels/{channel['id']}/sources", json={"source_id": src["id"]})
+    res = client.post(
+        f"/channels/{channel['id']}/sources",
+        json={"source_id": src["id"]},
+        headers=_HDR,
+    )
     assert res.status_code == 201
     assert src["id"] in res.json()["source_ids"]
 
     # Detach.
-    res = client.delete(f"/channels/{channel['id']}/sources/{src['id']}")
+    res = client.delete(
+        f"/channels/{channel['id']}/sources/{src['id']}", headers=_HDR
+    )
     assert res.status_code == 204
     refreshed = client.get(f"/channels/{channel['id']}").json()
     assert src["id"] not in refreshed["source_ids"]
 
 
-def test_api_attach_source_is_idempotent(client) -> None:
+def test_api_attach_source_is_idempotent(client, admin) -> None:
     client.post("/demo/seed")
-    channel = client.post("/channels", json={"name": "Idem"}).json()
+    channel = client.post("/channels", json={"name": "Idem"}, headers=_HDR).json()
     src = client.get("/sources").json()[0]
-    client.post(f"/channels/{channel['id']}/sources", json={"source_id": src["id"]})
-    res = client.post(f"/channels/{channel['id']}/sources", json={"source_id": src["id"]})
+    client.post(
+        f"/channels/{channel['id']}/sources",
+        json={"source_id": src["id"]},
+        headers=_HDR,
+    )
+    res = client.post(
+        f"/channels/{channel['id']}/sources",
+        json={"source_id": src["id"]},
+        headers=_HDR,
+    )
     assert res.status_code == 201
     # Still exactly one link.
     assert res.json()["source_ids"].count(src["id"]) == 1
 
 
-def test_api_attach_unknown_source_404(client) -> None:
+def test_api_attach_unknown_source_404(client, admin) -> None:
     client.post("/demo/seed")
-    channel = client.post("/channels", json={"name": "X"}).json()
-    res = client.post(f"/channels/{channel['id']}/sources", json={"source_id": "nope"})
+    channel = client.post("/channels", json={"name": "X"}, headers=_HDR).json()
+    res = client.post(
+        f"/channels/{channel['id']}/sources",
+        json={"source_id": "nope"},
+        headers=_HDR,
+    )
     assert res.status_code == 404
 
 

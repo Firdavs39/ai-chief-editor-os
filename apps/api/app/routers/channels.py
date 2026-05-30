@@ -33,9 +33,15 @@ from chief_editor.services.channels import (
     unlink_source,
 )
 
-from ..deps import get_session
+from ..deps import get_session, require_admin_token
 
 router = APIRouter(prefix="/channels", tags=["channels"])
+
+# Read endpoints stay open (consistent with /sources, /trends). Mutating
+# endpoints are admin-token gated: changing a channel's target_chat_id
+# redirects where approved content publishes, so it is higher-stakes than
+# editing a source. The API is reachable over a public tunnel, so this is
+# defense-in-depth, not just multi-tenant hygiene.
 
 
 def _serialize(session: Session, channel: Channel) -> ChannelOut:
@@ -76,7 +82,9 @@ def list_channels(session: Session = Depends(get_session)) -> list[ChannelOut]:
 
 @router.post("", response_model=ChannelOut, status_code=201)
 def create_channel(
-    payload: ChannelCreate, session: Session = Depends(get_session)
+    payload: ChannelCreate,
+    session: Session = Depends(get_session),
+    _: None = Depends(require_admin_token),
 ) -> ChannelOut:
     slug = slugify(payload.slug or payload.name)
     if session.exec(select(Channel).where(Channel.slug == slug)).first() is not None:
@@ -112,6 +120,7 @@ def update_channel(
     channel_id: str,
     payload: ChannelUpdate,
     session: Session = Depends(get_session),
+    _: None = Depends(require_admin_token),
 ) -> ChannelOut:
     channel = _get_or_404(session, channel_id)
     data = payload.model_dump(exclude_unset=True)
@@ -136,6 +145,7 @@ def attach_source(
     channel_id: str,
     payload: ChannelSourceLink,
     session: Session = Depends(get_session),
+    _: None = Depends(require_admin_token),
 ) -> ChannelOut:
     channel = _get_or_404(session, channel_id)
     if session.get(Source, payload.source_id) is None:
@@ -150,6 +160,7 @@ def detach_source(
     channel_id: str,
     source_id: str,
     session: Session = Depends(get_session),
+    _: None = Depends(require_admin_token),
 ) -> Response:
     _get_or_404(session, channel_id)
     removed = unlink_source(session, channel_id, source_id)
