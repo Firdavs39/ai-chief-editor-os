@@ -241,21 +241,6 @@ class MockLLMProvider(LLMProvider):
                 "hook_pattern": "никто не говорит / тихая революция",
                 "cognitive_bias_lever": "social proof (несколько источников)",
             }
-        # voice_brief
-        if required == (
-            "editorial_rationale",
-            "must_avoid",
-            "sentence_length_target",
-            "vocab_lane",
-        ):
-            return {
-                "editorial_rationale": _shorten(
-                    "Короткие фразы, экспертный словарь, без штампов.", 240
-                ),
-                "sentence_length_target": "короткие, 8-14 слов",
-                "vocab_lane": "экспертный, без жаргона",
-                "must_avoid": ["в эпоху", "в современном мире", "давайте погрузимся"],
-            }
         # tg_post
         if required == ("body", "cta", "editorial_rationale", "hook"):
             hook = _pick(_HOOKS_RU, seed)
@@ -365,10 +350,24 @@ class MockLLMProvider(LLMProvider):
                 "final_reddit": reddit_body,
                 "cta": cta,
             }
-        # quality_report
+        # fact_check (information-asymmetric grounding pass)
+        if required == (
+            "editorial_rationale",
+            "grounding_score",
+            "unsupported_claims",
+        ):
+            return {
+                "editorial_rationale": _shorten(
+                    "Проверяемые claim'ы финала привязаны к источникам.", 240
+                ),
+                "unsupported_claims": [],
+                "grounding_score": 0.95,
+            }
+        # quality_report (now includes hook_score)
         if required == (
             "controversy_risk",
             "editorial_rationale",
+            "hook_score",
             "recommendation",
             "slop_risk",
             "style_match_score",
@@ -378,15 +377,17 @@ class MockLLMProvider(LLMProvider):
             slop = max(0.05, 0.35 - (seed % 30) / 100)
             controversy = (seed % 25) / 100
             style_fit = 0.65 + (seed % 25) / 100
+            hook = 0.6 + (seed % 30) / 100
             return {
                 "editorial_rationale": _shorten(
-                    "Оценка по 4 метрикам в [0,1]; рекомендация для редактора.",
+                    "Оценка по метрикам в [0,1]; рекомендация для редактора.",
                     240,
                 ),
                 "style_match_score": round(min(0.95, style_fit), 2),
                 "viral_score": round(min(0.92, viral), 2),
                 "slop_risk": round(slop, 2),
                 "controversy_risk": round(controversy, 2),
+                "hook_score": round(min(0.95, hook), 2),
                 "recommendation": "approve" if slop < 0.25 and viral > 0.5 else "revise",
             }
         return None

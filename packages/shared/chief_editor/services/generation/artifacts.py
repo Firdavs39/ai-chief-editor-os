@@ -35,12 +35,17 @@ ARTIFACT_NAMES = {
     "research_brief",
     "angle",
     "psych",
-    "voice_brief",
+    # `voice_brief` (the old style_dna_editor output) was DROPPED in the
+    # role-refactor: per-channel voice now comes from the channel's
+    # StyleProfile via workflow._load_style, so a separate LLM voice step
+    # was a duplicate. VoiceBriefArtifact stays defined below for backward
+    # compatibility of any external importer, but is no longer produced.
     "tg_post",
     "threads_post",
     "reddit_post",
     "critic_report",
     "final_brief",
+    "fact_check",   # fact_checker output (information-asymmetric grounding)
     "quality_report",
     "candidate_link",  # finalizer's tiny artifact: {"candidate_id": "..."}
 }
@@ -84,6 +89,14 @@ class PsychArtifact(_ArtifactBase):
 
 
 class VoiceBriefArtifact(_ArtifactBase):
+    """DEPRECATED — output of the removed `style_dna_editor` step.
+
+    Retained so external code that imports the symbol keeps working. The
+    workflow no longer produces this artifact: per-channel voice is sourced
+    from the channel's StyleProfile (see workflow._load_style /
+    prompts._format_style). Do not add this back to STEP_SEQUENCE.
+    """
+
     sentence_length_target: str
     vocab_lane: str
     must_avoid: list[str] = Field(default_factory=list, max_length=5)
@@ -120,6 +133,22 @@ class CriticReportArtifact(_ArtifactBase):
     hook_grade: int = Field(default=5, ge=0, le=10)
 
 
+class FactCheckArtifact(_ArtifactBase):
+    """Output of the `fact_checker` step (information-asymmetric grounding).
+
+    The fact_checker sees the FINAL assembled text + the research_brief's
+    facts/sources, but NOT the writer's reasoning. It ties each checkable
+    claim in the final draft to a source and surfaces the ones it cannot.
+
+    - unsupported_claims: claims in the final text with no backing source
+      (≤5). An empty list means every checkable claim is grounded.
+    - grounding_score: 0..1 — fraction of checkable claims tied to a source.
+    """
+
+    unsupported_claims: list[str] = Field(default_factory=list, max_length=5)
+    grounding_score: float = Field(default=1.0, ge=0.0, le=1.0)
+
+
 class FinalBriefArtifact(_ArtifactBase):
     # Metadata fields (source_summary / why_it_matters / psychology_hook) are
     # operator-facing editorial commentary; their 400/300/200 caps were
@@ -141,6 +170,10 @@ class QualityReportArtifact(_ArtifactBase):
     viral_score: float = Field(default=0.0, ge=0.0, le=1.0)
     slop_risk: float = Field(default=0.0, ge=0.0, le=1.0)
     controversy_risk: float = Field(default=0.0, ge=0.0, le=1.0)
+    # Scroll-stop / hook strength of the opening ~80 chars (0..1). Defaults
+    # to 0.0 and is optional so older runs / providers that omit it still
+    # validate; the judge prompt asks for it explicitly.
+    hook_score: float = Field(default=0.0, ge=0.0, le=1.0)
     recommendation: Literal["approve", "revise", "reject"] = "revise"
 
 
@@ -154,12 +187,13 @@ ARTIFACT_MODELS: dict[str, type[BaseModel]] = {
     "research_brief": ResearchBriefArtifact,
     "angle": AngleArtifact,
     "psych": PsychArtifact,
-    "voice_brief": VoiceBriefArtifact,
+    # voice_brief intentionally NOT mapped — step removed (see ARTIFACT_NAMES).
     "tg_post": TelegramPostArtifact,
     "threads_post": ThreadsPostArtifact,
     "reddit_post": RedditPostArtifact,
     "critic_report": CriticReportArtifact,
     "final_brief": FinalBriefArtifact,
+    "fact_check": FactCheckArtifact,
     "quality_report": QualityReportArtifact,
     "candidate_link": CandidateLinkArtifact,
 }
@@ -207,6 +241,7 @@ __all__ = [
     "AngleArtifact",
     "CandidateLinkArtifact",
     "CriticReportArtifact",
+    "FactCheckArtifact",
     "FinalBriefArtifact",
     "PsychArtifact",
     "QualityReportArtifact",

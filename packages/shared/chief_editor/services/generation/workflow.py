@@ -203,8 +203,6 @@ def _build_user_prompt(
         return prompts.user_trend_strategist(cluster, artifacts)
     if builder == "audience_psychology":
         return prompts.user_audience_psychology(artifacts, style)
-    if builder == "style_dna_editor":
-        return prompts.user_style_dna_editor(artifacts, style)
     if builder == "platform_writer_telegram":
         return prompts.user_platform_writer(artifacts, "Telegram", style=style)
     if builder == "platform_writer_threads":
@@ -215,6 +213,8 @@ def _build_user_prompt(
         return prompts.user_critic_red_team(artifacts)
     if builder == "editor_in_chief_draft":
         return prompts.user_editor_in_chief_draft(artifacts)
+    if builder == "fact_checker":
+        return prompts.user_fact_checker(artifacts)
     if builder == "quality_judge":
         return prompts.user_quality_judge(artifacts)
     raise RuntimeError(f"unknown user_builder_name '{builder}'")
@@ -487,9 +487,22 @@ def _execute_llm_step(
     options = options_for_step(
         primary.name, step_def.name, is_judge=step_def.is_judge
     )
-    temperature = (
-        options.temperature if options.temperature is not None else 0.7
-    )
+    # Temperature resolution: the mock provider always wins with its
+    # deterministic temperatures (options.temperature == 0.0) so tests stay
+    # reproducible. For real providers, the per-role band declared on the
+    # StepDef is authoritative (writer 0.6 / evaluator 0.2 / analyst 0.3);
+    # options_for_step already returns the same value, but preferring the
+    # StepDef keeps STEP_SEQUENCE the single source of truth.
+    if primary.name == "mock":
+        temperature = (
+            options.temperature if options.temperature is not None else 0.0
+        )
+    else:
+        temperature = (
+            step_def.role_temperature
+            if step_def.role_temperature is not None
+            else (options.temperature if options.temperature is not None else 0.7)
+        )
 
     def _usage_for(provider: LLMProvider, used_fallback: bool) -> dict[str, Any]:
         return {

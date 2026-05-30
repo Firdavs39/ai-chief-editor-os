@@ -166,12 +166,12 @@ def test_phase_q_constants_exposed_correctly_to_workflow() -> None:
         prompts.system_research_analyst,
         prompts.system_trend_strategist,
         prompts.system_audience_psychology,
-        prompts.system_style_dna_editor,
         prompts.system_platform_writer_telegram,
         prompts.system_platform_writer_threads,
         prompts.system_platform_writer_reddit,
         prompts.system_critic_red_team,
         prompts.system_editor_in_chief_draft,
+        prompts.system_fact_checker,
         prompts.system_quality_judge,
     ):
         # None style profile — most realistic for new operator

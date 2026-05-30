@@ -142,6 +142,40 @@ def _safety_block() -> str:
 
 
 # ---------------------------------------------------------------------------
+# Bulletproof prompt scaffolding (audit refactor, prompt-engineering-lead).
+#
+# Every system prompt follows the same section order:
+#   MISSION → PERSONA (+ NEGATIVE SCOPE) → INPUTS (delimited) → OUTPUT →
+#   HARD RULES (≤5) → BAD→GOOD → SAFETY+STOP.
+# The helpers below assemble that skeleton so each role stays inside its
+# token budget (writer 350-550, analytic/judge 200-350) and so the
+# NEGATIVE SCOPE re-anchor is identical across roles.
+# ---------------------------------------------------------------------------
+
+
+def _negative_scope(role_ru: str, *, only: str) -> str:
+    """PERSONA + NEGATIVE SCOPE line: who you are and what you must NOT do."""
+    return (
+        f"PERSONA: ты — {role_ru}. Ты только {only}. "
+        "Не оценивай чужую работу, не переписывай за других, не публикуй и "
+        "не одобряй — это делают другие роли."
+    )
+
+
+def wrap_input(tag: str, value: object) -> str:
+    """Wrap a prompt input in XML-style delimiters so the model can tell
+    instructions from data. Replaces the old bare f"{dict}" interpolation
+    (a prompt-injection and role-confusion risk)."""
+    return f"<{tag}>\n{value}\n</{tag}>"
+
+
+def _role_reanchor(role_ru: str) -> str:
+    """First line of every USER prompt — re-pins the role after the system
+    prompt so long contexts don't let the model drift into another role."""
+    return f"Действуй строго как {role_ru}.\n\n"
+
+
+# ---------------------------------------------------------------------------
 # JSON schemas — flat, ≤ 6 fields, editorial_rationale first when used.
 # ---------------------------------------------------------------------------
 
@@ -204,26 +238,6 @@ SCHEMA_PSYCH: dict[str, Any] = {
         "target_emotion": {"type": "string"},
         "hook_pattern": {"type": "string"},
         "cognitive_bias_lever": {"type": "string"},
-    },
-}
-
-SCHEMA_VOICE_BRIEF: dict[str, Any] = {
-    "type": "object",
-    "required": [
-        "editorial_rationale",
-        "sentence_length_target",
-        "vocab_lane",
-        "must_avoid",
-    ],
-    "properties": {
-        "editorial_rationale": {"type": "string", "maxLength": 1500},
-        "sentence_length_target": {"type": "string"},
-        "vocab_lane": {"type": "string"},
-        "must_avoid": {
-            "type": "array",
-            "items": {"type": "string"},
-            "maxItems": 5,
-        },
     },
 }
 
@@ -313,6 +327,25 @@ SCHEMA_FINAL_BRIEF: dict[str, Any] = {
     },
 }
 
+# Fact-checker — information-asymmetric grounding pass over the FINAL text.
+SCHEMA_FACT_CHECK: dict[str, Any] = {
+    "type": "object",
+    "required": [
+        "editorial_rationale",
+        "unsupported_claims",
+        "grounding_score",
+    ],
+    "properties": {
+        "editorial_rationale": {"type": "string", "maxLength": 1500},
+        "unsupported_claims": {
+            "type": "array",
+            "items": {"type": "string"},
+            "maxItems": 5,
+        },
+        "grounding_score": {"type": "number", "minimum": 0, "maximum": 1},
+    },
+}
+
 SCHEMA_QUALITY_REPORT: dict[str, Any] = {
     "type": "object",
     "required": [
@@ -321,6 +354,7 @@ SCHEMA_QUALITY_REPORT: dict[str, Any] = {
         "viral_score",
         "slop_risk",
         "controversy_risk",
+        "hook_score",
         "recommendation",
     ],
     "properties": {
@@ -329,6 +363,7 @@ SCHEMA_QUALITY_REPORT: dict[str, Any] = {
         "viral_score": {"type": "number", "minimum": 0, "maximum": 1},
         "slop_risk": {"type": "number", "minimum": 0, "maximum": 1},
         "controversy_risk": {"type": "number", "minimum": 0, "maximum": 1},
+        "hook_score": {"type": "number", "minimum": 0, "maximum": 1},
         "recommendation": {
             "type": "string",
             "enum": ["approve", "revise", "reject"],
@@ -364,8 +399,18 @@ _WRITER_ANTI_EXAMPLE = (
 
 def system_research_analyst(style: StyleProfile | None) -> str:
     return (
-        _editorial_role_preamble("главный аналитик-исследователь")
-        + " Анализируешь сигналы из источников, выделяешь факты, источники и пробелы. "
+        "MISSION: из сигналов источников выдать проверяемые факты, источники "
+        "и пробелы для остальной редакции.\n"
+        + _negative_scope("аналитик-исследователь", only="собираешь факты")
+        + "\nINPUTS: тема кластера, keywords, score breakdown и тексты "
+        "источников придут в делимитерах <cluster_context>.\n"
+        "OUTPUT: editorial_rationale (зачем эти факты), fact_bullets (3-7 "
+        "проверяемых утверждений), source_handles (≤5), gaps (≤3 чего не "
+        "хватает).\n"
+        "HARD RULES:\n"
+        "1. Только то, что есть в источниках — не достраивай факты.\n"
+        "2. Каждый fact_bullet проверяем (цифра, имя, дата, цитата).\n"
+        "3. Если данных нет — пиши это в gaps, не выдумывай.\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -374,8 +419,16 @@ def system_research_analyst(style: StyleProfile | None) -> str:
 
 def system_trend_strategist(style: StyleProfile | None) -> str:
     return (
-        _editorial_role_preamble("стратег по трендам")
-        + " На основе фактов формулируешь основной угол, контр-тейк и причину «почему сейчас». "
+        "MISSION: из фактов исследования выбрать один острый угол подачи для "
+        "писателей.\n"
+        + _negative_scope("стратег по трендам", only="формулируешь угол")
+        + "\nINPUTS: research_brief и score breakdown придут в делимитерах.\n"
+        "OUTPUT: editorial_rationale, primary_angle (основной угол), "
+        "contrarian_take (контр-тейк, если уместен), why_now (почему сейчас).\n"
+        "HARD RULES:\n"
+        "1. Угол опирается на конкретный факт из research_brief.\n"
+        "2. contrarian_take — narrow disagreement, не broad contrarianism.\n"
+        "3. why_now привязан к свежему сигналу, а не к «в наше время».\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -383,27 +436,25 @@ def system_trend_strategist(style: StyleProfile | None) -> str:
 
 
 def system_audience_psychology(style: StyleProfile | None) -> str:
-    """Phase Q v4 (trimmed): названия таксономий + формат без длинных пояснений."""
+    """Phase Q v4 (trimmed) + refactor: bulletproof skeleton, taxonomy names
+    kept as a compact reference (not императивы)."""
     return (
-        _editorial_role_preamble("аналитик психологии аудитории")
-        + " Задача: называть недовысказанную мысль читателя, не инъекция biases. "
-        "Цель — узнавание, не убеждение.\n\n"
-        f"target_emotion: одно из {{{_EMOTION_TAXONOMY_TEXT}}}.\n"
-        "hook_pattern: один из:\n"
+        "MISSION: назвать недовысказанную мысль читателя, чтобы писатель попал "
+        "в узнавание, а не в убеждение.\n"
+        + _negative_scope(
+            "аналитик психологии аудитории", only="называешь эмоцию и крючок"
+        )
+        + "\nINPUTS: angle и audience придут в делимитерах.\n"
+        "OUTPUT: editorial_rationale, target_emotion (одно из таксономии ниже), "
+        "hook_pattern (один из паттернов ниже), cognitive_bias_lever "
+        "(формат «<bias> via <mechanism> at <click_position>», ≤25 слов).\n"
+        "HARD RULES:\n"
+        f"1. target_emotion ∈ {{{_EMOTION_TAXONOMY_TEXT}}}.\n"
+        "2. hook_pattern — ровно один из паттернов-справки ниже.\n"
+        f"3. Запрещены мёртвые рычаги: {_DEAD_LEVERS_TEXT}.\n"
+        "Паттерны-крючки (справка):\n"
         + _HOOK_PATTERNS_TEXT
-        + "\ncognitive_bias_lever: формат «<bias> via <mechanism> at <click_position>», ≤25 слов.\n"
-        f"Запрещены мёртвые рычаги: {_DEAD_LEVERS_TEXT}.\n"
-        + _RATIONALE_RULE
-        + f"\nStyle context: {_format_style(style)}"
-        + _safety_block()
-    )
-
-
-def system_style_dna_editor(style: StyleProfile | None) -> str:
-    return (
-        _editorial_role_preamble("редактор Style DNA")
-        + " Переводишь психологические рекомендации в правила голоса: целевая длина "
-        "предложений, словарная полоса, чего избегать. "
+        + "\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -411,17 +462,22 @@ def system_style_dna_editor(style: StyleProfile | None) -> str:
 
 
 def system_platform_writer_telegram(style: StyleProfile | None) -> str:
-    """Phase Q v4 (trimmed) + v7 (anti-example): 10 evasion rules +
-    hook-pattern names + ONE Bad/Good anti-example pair (R3 finding).
-    Banned-phrase list is OUT of the prompt — deterministic detector
-    catches them post-generation."""
+    """Refactor: bulletproof skeleton, voice from StyleProfile (Style context),
+    hook is a first-class field. 10 evasion rules kept as the core mechanical
+    guidance; banned-phrase list stays OUT (deterministic detector catches)."""
     return (
-        _editorial_role_preamble("райтер для Telegram (RU pro, май 2026)")
-        + " Лимит 4096 chars, engagement-оптимум 800-1500. Короче — лучше.\n\n"
-        "ПРАВИЛА:\n"
+        "MISSION: написать готовый к показу Telegram-пост в голосе канала под "
+        "выбранный угол и эмоцию.\n"
+        + _negative_scope("райтер для Telegram (RU pro, май 2026)", only="пишешь пост")
+        + "\nINPUTS: angle, psych и Style context придут в делимитерах. Голос "
+        "бери из Style context — это голос конкретного канала.\n"
+        "OUTPUT: editorial_rationale, body (лимит 4096, цель 800-1500 — короче "
+        "лучше), hook (первые ~80 символов, осознанно спроектированный крючок), "
+        "cta.\n"
+        "HOOK: продумай в голове 3 варианта первой строки под hook_pattern из "
+        "psych, лучший положи в поле hook и поставь его первой строкой body.\n"
+        "HARD RULES (compact):\n"
         + _EVASION_RULES_TEXT
-        + "\n\nВыбери ОДИН hook_pattern (не смешивай):\n"
-        + _HOOK_PATTERNS_TEXT
         + f"\n\n{_WRITER_ANTI_EXAMPLE}\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
@@ -430,14 +486,21 @@ def system_platform_writer_telegram(style: StyleProfile | None) -> str:
 
 
 def system_platform_writer_threads(style: StyleProfile | None) -> str:
-    """Phase Q v4 (trimmed): no banned-list inline (detector catches)."""
+    """Refactor: bulletproof skeleton; voice from StyleProfile (Style context).
+    No banned-list inline (detector catches)."""
     return (
-        _editorial_role_preamble("райтер для Threads (RU pro)")
-        + " Лимит 500 chars, engagement-оптимум 180-380. "
-        "Завершай открытым вопросом — алгоритм оптимизирует reply-chain, не лайки.\n\n"
-        "Правила: open конкретной деталью (имя/число/сцена); ОДНО короткое предложение "
-        "до 6 слов; ОДНО длинное от 25; минимум одна локатируемая конкретика; "
-        "конец — открытый вопрос конкретному читателю.\n\n"
+        "MISSION: написать короткий Threads-пост в голосе канала, заточенный "
+        "под reply-chain.\n"
+        + _negative_scope("райтер для Threads (RU pro)", only="пишешь пост")
+        + "\nINPUTS: angle, psych и Style context придут в делимитерах. Голос "
+        "бери из Style context.\n"
+        "OUTPUT: editorial_rationale, body (лимит 500, цель 180-380), cta.\n"
+        "HARD RULES:\n"
+        "1. Открой конкретной деталью (имя / число / сцена).\n"
+        "2. Одно короткое предложение до 6 слов и одно длинное от 25.\n"
+        "3. Минимум одна локатируемая конкретика.\n"
+        "4. Заканчивай открытым вопросом конкретному читателю — алгоритм "
+        "оптимизирует reply-chain, не лайки.\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -445,13 +508,16 @@ def system_platform_writer_threads(style: StyleProfile | None) -> str:
 
 
 def system_platform_writer_reddit(style: StyleProfile | None) -> str:
-    """Phase Q v4 (trimmed) + v7 (anti-example)."""
+    """Refactor: bulletproof skeleton; voice from StyleProfile (Style context)."""
     return (
-        _editorial_role_preamble("райтер для Reddit (RU + EN)")
-        + " title 60-90 chars (полное утверждение/вопрос, без clickbait), "
-        "body 800-2000. TL;DR в конце, не в начале (RU-конвенция 2026). "
-        "Язык — по источнику.\n\n"
-        "ПРАВИЛА:\n"
+        "MISSION: написать Reddit-пост (title + body) в голосе канала, язык — "
+        "по источнику.\n"
+        + _negative_scope("райтер для Reddit (RU + EN)", only="пишешь пост")
+        + "\nINPUTS: angle, psych и Style context придут в делимитерах. Голос "
+        "бери из Style context.\n"
+        "OUTPUT: editorial_rationale, title (60-90, полное утверждение/вопрос, "
+        "без clickbait), body (800-2000, TL;DR в конце), cta.\n"
+        "HARD RULES (compact):\n"
         + _EVASION_RULES_TEXT
         + f"\n\n{_WRITER_ANTI_EXAMPLE}\n"
         + _RATIONALE_RULE
@@ -461,21 +527,22 @@ def system_platform_writer_reddit(style: StyleProfile | None) -> str:
 
 
 def system_critic_red_team(style: StyleProfile | None) -> str:
-    """Phase Q v4 (trimmed). Critic receives deterministic_flags via user
-    prompt — they ARE the floor. LLM adds editorial judgment on top."""
+    """Refactor: bulletproof skeleton. Critic receives deterministic_flags via
+    user prompt — they ARE the floor. LLM adds editorial judgment on top."""
     return (
-        _editorial_role_preamble("критик / red team (RU 2026)")
-        + " Оцениваешь TG/Threads/Reddit драфты. user-промпт включает "
-        "deterministic_flags от Python-детектора — они ОБЯЗАНЫ попасть в "
-        "length_issues или factual_concerns и поднять slop_count.\n\n"
-        "Сверху добавляешь editorial-флаги:\n"
-        "1. Слабый крючок (первые 1-2 строки не останавливают скролл)\n"
-        "2. Mismatch emotion_target vs текст (psych сказал validated_cynicism — "
-        "а тон cheerleading)\n"
-        "3. Нет конкретного якоря (имя, дата, цифра с дробью)\n"
-        "4. Wrap-up концовка-пересказ\n"
-        "5. Симметричные тройки «X, Y и Z»\n"
-        "6. Em-dash flood\n\n"
+        "MISSION: red-team три драфта (TG/Threads/Reddit) и выдать критику для "
+        "главного редактора.\n"
+        + _negative_scope("критик / red team (RU 2026)", only="оцениваешь драфты")
+        + "\nINPUTS: драфты и DETERMINISTIC FLAGS от Python-детектора придут в "
+        "делимитерах. Эти флаги — пол: они ОБЯЗАНЫ попасть в length_issues или "
+        "factual_concerns и поднять slop_count.\n"
+        "OUTPUT: editorial_rationale, slop_count, factual_concerns (≤3), "
+        "length_issues (≤3), hook_grade (0-10).\n"
+        "HARD RULES (editorial-флаги сверх детектора):\n"
+        "1. Слабый крючок (первые 1-2 строки не держат скролл).\n"
+        "2. Mismatch target_emotion vs тон текста.\n"
+        "3. Нет конкретного якоря (имя, дата, цифра с дробью).\n"
+        "4. Wrap-up концовка-пересказ или симметричные тройки «X, Y и Z».\n"
         "hook_grade 0-10: 0-3 серый, 4-6 средний, 7-8 сильный, 9-10 выдающийся.\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
@@ -485,10 +552,44 @@ def system_critic_red_team(style: StyleProfile | None) -> str:
 
 def system_editor_in_chief_draft(style: StyleProfile | None) -> str:
     return (
-        _editorial_role_preamble("главный редактор (Editor-in-Chief)")
-        + " Собираешь финальный brief: подбираешь лучшие версии Telegram/Threads/Reddit, "
-        "формулируешь topic / source_summary / why_it_matters / psychology_hook / cta. "
-        "Не публикуешь и не одобряешь — ты только собираешь. "
+        "MISSION: собрать финальный brief из лучших версий драфтов с учётом "
+        "критики.\n"
+        + _negative_scope("главный редактор (Editor-in-Chief)", only="собираешь финал")
+        + "\nINPUTS: research, angle, psych, три драфта и critic_report придут "
+        "в делимитерах.\n"
+        "OUTPUT: editorial_rationale, topic, source_summary, why_it_matters, "
+        "psychology_hook, final_tg, final_threads, final_reddit, cta.\n"
+        "HARD RULES:\n"
+        "1. Бери лучшую версию каждой платформы, учитывай замечания критика.\n"
+        "2. Соблюдай лимиты длины под каждую платформу.\n"
+        "3. Не добавляй фактов, которых нет в research — ты собираешь, не пишешь.\n"
+        + _RATIONALE_RULE
+        + f"\nStyle context: {_format_style(style)}"
+        + _safety_block()
+    )
+
+
+def system_fact_checker(style: StyleProfile | None) -> str:
+    """NEW role (audit refactor). Information asymmetry is the point: the
+    fact_checker sees the FINAL assembled text + the research facts/sources,
+    but NOT the writer's reasoning. Asymmetry is the documented lever that
+    reduces hallucination — the checker cannot be talked into a claim by the
+    writer's rationale, it can only tie claims to sources."""
+    return (
+        "MISSION: проверить, что каждый проверяемый claim финального текста "
+        "опирается на факт/источник из research_brief.\n"
+        + _negative_scope("фактчекер", only="проверяешь привязку claim'ов к источникам")
+        + "\nINPUTS: финальный текст придёт в <final_brief>, факты и источники "
+        "в <research_facts>. Рассуждений писателя ты НЕ видишь — это намеренно: "
+        "оценивай только текст против фактов.\n"
+        "OUTPUT: editorial_rationale, unsupported_claims (≤5 — claim'ы финала "
+        "без опоры на источник), grounding_score (0..1, доля привязанных "
+        "claim'ов).\n"
+        "HARD RULES:\n"
+        "1. claim считается необоснованным, если его нет в research_facts.\n"
+        "2. Не переписывай текст и не оценивай стиль — только grounding.\n"
+        "3. Если все claim'ы привязаны — unsupported_claims пустой, "
+        "grounding_score близок к 1.0.\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -496,30 +597,34 @@ def system_editor_in_chief_draft(style: StyleProfile | None) -> str:
 
 
 def system_quality_judge(style: StyleProfile | None) -> str:
-    """Phase Q: calibrated score thresholds. Drafts with deterministic AI-tells
-    flagged by the critic step cannot score >0.7 viral_score regardless of
-    editorial polish — the floor checks ARE the floor."""
+    """Phase Q + refactor: calibrated thresholds, now also consuming the
+    fact_checker's grounding signal and scoring the hook (scroll-stop)
+    explicitly. Drafts with deterministic AI-tells from the critic cannot
+    score high viral regardless of polish — the floor checks ARE the floor."""
     return (
-        _editorial_role_preamble("Quality Judge (RU editorial 2026)")
-        + " Оцениваешь финальный brief по четырём метрикам (0..1) и выдаёшь "
-        "recommendation: approve | revise | reject.\n\n"
-        "КАЛИБРОВКА score-ов:\n"
-        "- style_match_score: 0.0 = чужой голос, 0.5 = generic SMM, "
-        "0.7 = соответствует Style DNA, 0.9 = воспроизводит фирменный приём.\n"
-        "- viral_score: 0.0 = пройдут мимо, 0.5 = прочитают и забудут, "
-        "0.7 = сохранят, 0.85+ = перешлют (требует крючка из 8 паттернов И "
-        "конкретного якоря).\n"
-        "- slop_risk: 0.0 = читается как человек, 0.3 = есть лёгкие AI-следы, "
-        "0.5 = заметные штампы, 0.8+ = очевидно AI. ОБЯЗАТЕЛЬНО учитывай "
-        "deterministic_flags из critic_report.\n"
-        "- controversy_risk: 0.0 = безопасно, 0.5 = вызовет диалог, "
-        "0.8+ = риск репутации.\n\n"
-        "Recommendation logic:\n"
-        "- approve: viral≥0.75 И slop_risk≤0.30 И controversy_risk≤0.55\n"
-        "- revise: иначе, если slop_risk≤0.50 (исправимо)\n"
-        "- reject: slop_risk>0.50 ИЛИ controversy_risk>0.75\n\n"
-        "Эта recommendation — рекомендация редактору, не автоматическое "
-        "одобрение в продукте.\n"
+        "MISSION: оценить финальный brief по метрикам (0..1) и дать "
+        "recommendation редактору.\n"
+        + _negative_scope("Quality Judge (RU editorial 2026)", only="оцениваешь финал")
+        + "\nINPUTS: final_brief, critic_report и fact_check придут в "
+        "делимитерах. Учитывай deterministic_flags критика и unsupported_claims "
+        "фактчекера.\n"
+        "OUTPUT: editorial_rationale, style_match_score, viral_score, slop_risk, "
+        "controversy_risk, hook_score, recommendation ∈ {approve, revise, reject}.\n"
+        "КАЛИБРОВКА (справка):\n"
+        "- style_match_score: 0.0 чужой голос … 0.7 соответствует Style DNA … "
+        "0.9 фирменный приём.\n"
+        "- viral_score: 0.0 пройдут мимо … 0.7 сохранят … 0.85+ перешлют.\n"
+        "- slop_risk: 0.0 как человек … 0.8+ очевидно AI. Учитывай "
+        "deterministic_flags.\n"
+        "- controversy_risk: 0.0 безопасно … 0.8+ риск репутации.\n"
+        "- hook_score: scroll-stop первых ~80 символов. 0.0 не держит, "
+        "0.5 средне, 0.8+ останавливает скролл и тянет читать дальше.\n"
+        "HARD RULES:\n"
+        "1. Если unsupported_claims фактчекера не пуст — slop_risk не ниже 0.4 "
+        "и recommendation не выше revise.\n"
+        "2. approve: viral≥0.75 И slop_risk≤0.30 И controversy_risk≤0.55 И "
+        "hook_score≥0.6; revise если slop_risk≤0.50; иначе reject.\n"
+        "3. recommendation — рекомендация редактору, НЕ авто-одобрение.\n"
         + _RATIONALE_RULE
         + f"\nStyle context: {_format_style(style)}"
         + _safety_block()
@@ -536,7 +641,8 @@ def user_research_analyst(
     cluster: TrendCluster | None, raw_items: list[RawItem]
 ) -> str:
     return (
-        _format_cluster_context(cluster, raw_items)
+        _role_reanchor("аналитик-исследователь")
+        + wrap_input("cluster_context", _format_cluster_context(cluster, raw_items))
         + "\n\nВерни JSON с полями: editorial_rationale, fact_bullets (3-7), "
         "source_handles (≤5), gaps (≤3). "
         + SAFETY_FOOTER
@@ -549,10 +655,13 @@ def user_trend_strategist(
     rb = artifacts.get("research_brief", {})
     score = (cluster.score_breakdown if cluster else {}) or {}
     return (
-        f"Research brief:\n{rb}\n"
-        f"Score breakdown: {score}\n\n"
-        "Сформируй: primary_angle (основной угол), contrarian_take (контр-тейк, "
-        "если уместен), why_now (почему сейчас). editorial_rationale ≤ 1500 симв. "
+        _role_reanchor("стратег по трендам")
+        + wrap_input("research_brief", rb)
+        + "\n"
+        + wrap_input("score_breakdown", score)
+        + "\n\nСформируй: primary_angle (основной угол), contrarian_take "
+        "(контр-тейк, если уместен), why_now (почему сейчас). "
+        "editorial_rationale ≤ 1500 симв. "
         + SAFETY_FOOTER
     )
 
@@ -561,29 +670,31 @@ def user_audience_psychology(artifacts: dict, style: StyleProfile | None) -> str
     angle = artifacts.get("angle", {})
     audience = (style.audience if style else "контент-маркетологи и редакторы") or ""
     return (
-        f"Angle: {angle}\nAudience: {audience}\n\n"
-        "Определи target_emotion, hook_pattern, cognitive_bias_lever. "
-        "editorial_rationale ≤ 1500. " + SAFETY_FOOTER
-    )
-
-
-def user_style_dna_editor(artifacts: dict, style: StyleProfile | None) -> str:
-    psych = artifacts.get("psych", {})
-    return (
-        f"Psych brief: {psych}\nStyle: {_format_style(style)}\n\n"
-        "Дай: sentence_length_target (например, «короткие, 8-14 слов»), "
-        "vocab_lane («экспертный, без жаргона»), must_avoid (≤5). "
+        _role_reanchor("аналитик психологии аудитории")
+        + wrap_input("angle", angle)
+        + "\n"
+        + wrap_input("audience", audience)
+        + "\n\nОпредели target_emotion, hook_pattern, cognitive_bias_lever. "
         "editorial_rationale ≤ 1500. " + SAFETY_FOOTER
     )
 
 
 def user_platform_writer(artifacts: dict, platform: str, *, style: StyleProfile | None) -> str:
-    voice = artifacts.get("voice_brief", {})
+    """Writer user prompt. Voice now comes from the channel's StyleProfile
+    (Style context, in delimiters) — NOT from a voice_brief artifact (the
+    style_dna_editor step was removed in the role refactor)."""
     angle = artifacts.get("angle", {})
+    psych = artifacts.get("psych", {})
     return (
-        f"Voice brief: {voice}\nAngle: {angle}\nStyle: {_format_style(style)}\n\n"
-        f"Напиши {platform}-версию. Соблюдай длину под платформу. "
-        "Поля JSON: editorial_rationale + (body / hook / cta или title / body / cta). "
+        _role_reanchor(f"райтер для {platform}")
+        + wrap_input("angle", angle)
+        + "\n"
+        + wrap_input("psych", psych)
+        + "\n"
+        + wrap_input("style_context", _format_style(style))
+        + f"\n\nНапиши {platform}-версию в голосе из style_context. Соблюдай "
+        "длину под платформу. Поля JSON: editorial_rationale + "
+        "(body / hook / cta или title / body / cta). "
         + SAFETY_FOOTER
     )
 
@@ -615,8 +726,14 @@ def user_critic_red_team(artifacts: dict) -> str:
     )
 
     return (
-        f"Telegram: {tg}\nThreads: {th}\nReddit: {rd}\n\n"
-        + deterministic_block
+        _role_reanchor("критик / red team")
+        + wrap_input("telegram_draft", tg)
+        + "\n"
+        + wrap_input("threads_draft", th)
+        + "\n"
+        + wrap_input("reddit_draft", rd)
+        + "\n"
+        + wrap_input("deterministic_flags", deterministic_block)
         + "\n\nПрогон red-team: slop_count (число штампов + deterministic flags), "
         "factual_concerns (≤3), length_issues (≤3 — включая deterministic), "
         "hook_grade (0-10). Если deterministic flags не пусты — slop_count "
@@ -634,23 +751,75 @@ def user_editor_in_chief_draft(artifacts: dict) -> str:
     rd = artifacts.get("reddit_post", {})
     critic = artifacts.get("critic_report", {})
     return (
-        f"Research: {rb}\nAngle: {angle}\nPsych: {psych}\n"
-        f"Telegram draft: {tg}\nThreads draft: {th}\nReddit draft: {rd}\n"
-        f"Critic report: {critic}\n\n"
-        "Собери final_brief: topic, source_summary (≤2000), why_it_matters (≤1500), "
-        "psychology_hook (≤1500), final_tg (≤4096, цель 600–1500), "
-        "final_threads (≤500), final_reddit (≤10000, цель 800–3000), cta. "
-        "Учти замечания критика. editorial_rationale ≤ 1500. " + SAFETY_FOOTER
+        _role_reanchor("главный редактор (Editor-in-Chief)")
+        + wrap_input("research_brief", rb)
+        + "\n"
+        + wrap_input("angle", angle)
+        + "\n"
+        + wrap_input("psych", psych)
+        + "\n"
+        + wrap_input("telegram_draft", tg)
+        + "\n"
+        + wrap_input("threads_draft", th)
+        + "\n"
+        + wrap_input("reddit_draft", rd)
+        + "\n"
+        + wrap_input("critic_report", critic)
+        + "\n\nСобери final_brief: topic, source_summary (≤2000), "
+        "why_it_matters (≤1500), psychology_hook (≤1500), final_tg (≤4096, "
+        "цель 600–1500), final_threads (≤500), final_reddit (≤10000, цель "
+        "800–3000), cta. Учти замечания критика. editorial_rationale ≤ 1500. "
+        + SAFETY_FOOTER
+    )
+
+
+def user_fact_checker(artifacts: dict) -> str:
+    """Information-asymmetric fact-check user prompt.
+
+    DELIBERATELY ships ONLY the final_brief text + the research_brief's
+    facts/sources. The writer drafts (tg_post/threads_post/reddit_post) and
+    all editorial_rationale reasoning are withheld so the checker grounds the
+    FINAL claims against sources without being anchored by the writer's
+    narrative. This asymmetry is the documented hallucination-reduction lever.
+    """
+    fb = artifacts.get("final_brief", {})
+    rb = artifacts.get("research_brief", {})
+    final_text = {
+        "topic": fb.get("topic", ""),
+        "final_tg": fb.get("final_tg", ""),
+        "final_threads": fb.get("final_threads", ""),
+        "final_reddit": fb.get("final_reddit", ""),
+        "why_it_matters": fb.get("why_it_matters", ""),
+    }
+    research_facts = {
+        "fact_bullets": rb.get("fact_bullets", []),
+        "source_handles": rb.get("source_handles", []),
+    }
+    return (
+        _role_reanchor("фактчекер")
+        + wrap_input("final_brief", final_text)
+        + "\n"
+        + wrap_input("research_facts", research_facts)
+        + "\n\nПривяжи каждый проверяемый claim финала к источнику. Верни: "
+        "unsupported_claims (≤5 claim'ов без опоры), grounding_score (0..1). "
+        "editorial_rationale ≤ 1500. " + SAFETY_FOOTER
     )
 
 
 def user_quality_judge(artifacts: dict) -> str:
     fb = artifacts.get("final_brief", {})
     critic = artifacts.get("critic_report", {})
+    fact_check = artifacts.get("fact_check", {})
     return (
-        f"Final brief: {fb}\nCritic report: {critic}\n\n"
-        "Оцени: style_match_score, viral_score, slop_risk, controversy_risk "
-        "(все в [0, 1]), recommendation ∈ {approve, revise, reject}. "
+        _role_reanchor("Quality Judge")
+        + wrap_input("final_brief", fb)
+        + "\n"
+        + wrap_input("critic_report", critic)
+        + "\n"
+        + wrap_input("fact_check", fact_check)
+        + "\n\nОцени: style_match_score, viral_score, slop_risk, "
+        "controversy_risk, hook_score (все в [0, 1]), recommendation ∈ "
+        "{approve, revise, reject}. Учитывай unsupported_claims фактчекера. "
         "Помни: recommendation — это рекомендация редактору, НЕ автоматическое "
         "одобрение в продукте. editorial_rationale ≤ 1500. " + SAFETY_FOOTER
     )
@@ -660,6 +829,7 @@ __all__ = [
     "SAFETY_FOOTER",
     "SCHEMA_ANGLE",
     "SCHEMA_CRITIC_REPORT",
+    "SCHEMA_FACT_CHECK",
     "SCHEMA_FINAL_BRIEF",
     "SCHEMA_PSYCH",
     "SCHEMA_QUALITY_REPORT",
@@ -667,23 +837,23 @@ __all__ = [
     "SCHEMA_RESEARCH_BRIEF",
     "SCHEMA_TG_POST",
     "SCHEMA_THREADS_POST",
-    "SCHEMA_VOICE_BRIEF",
     "system_audience_psychology",
     "system_critic_red_team",
     "system_editor_in_chief_draft",
+    "system_fact_checker",
     "system_platform_writer_reddit",
     "system_platform_writer_telegram",
     "system_platform_writer_threads",
     "system_quality_judge",
     "system_research_analyst",
-    "system_style_dna_editor",
     "system_trend_strategist",
     "user_audience_psychology",
     "user_critic_red_team",
     "user_editor_in_chief_draft",
+    "user_fact_checker",
     "user_platform_writer",
     "user_quality_judge",
     "user_research_analyst",
-    "user_style_dna_editor",
     "user_trend_strategist",
+    "wrap_input",
 ]

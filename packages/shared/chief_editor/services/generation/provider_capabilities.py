@@ -54,6 +54,66 @@ class ProviderCapability:
     step_retry_budget: int = 1
 
 
+# ---------------------------------------------------------------------------
+# Per-role temperature (audit refactor, May 2026).
+#
+# Replaces the single 0.7 default with role-band temperatures derived from
+# the role's job, not a global knob:
+#   - writer roles: 0.6 — Kimi K2-Instruct doc recommends 0.6 for creative
+#     generation (lower than 0.7 reduces slop without flattening voice).
+#   - evaluative roles (critic, fact_checker, quality_judge): 0.2 — scoring
+#     and grounding must be as deterministic as the provider allows.
+#   - analytical roles (research, trend, audience psychology): 0.3 — some
+#     spread for ideation, but anchored to the source facts.
+#
+# A real provider with deterministic-leaning capability (mock) overrides
+# these with 0.0 so tests stay reproducible — see `options_for_step`.
+# ---------------------------------------------------------------------------
+
+WRITER_TEMPERATURE: float = 0.6
+EVALUATOR_TEMPERATURE: float = 0.2
+ANALYST_TEMPERATURE: float = 0.3
+
+_WRITER_STEPS = frozenset(
+    {
+        "platform_writer_telegram",
+        "platform_writer_threads",
+        "platform_writer_reddit",
+        "editor_in_chief_draft",
+    }
+)
+_EVALUATOR_STEPS = frozenset(
+    {
+        "critic_red_team",
+        "fact_checker",
+        "quality_judge",
+    }
+)
+_ANALYST_STEPS = frozenset(
+    {
+        "research_analyst",
+        "trend_strategist",
+        "audience_psychology_analyst",
+    }
+)
+
+
+def temperature_for_role(step_name: str) -> float | None:
+    """Per-role temperature band, or None if the step is not role-mapped.
+
+    Returning None lets `options_for_step` fall back to the provider's
+    default/judge temperature (preserves behaviour for unknown step names
+    and keeps the mock provider's deterministic 0.0 override intact).
+    """
+    if step_name in _WRITER_STEPS:
+        return WRITER_TEMPERATURE
+    if step_name in _EVALUATOR_STEPS:
+        return EVALUATOR_TEMPERATURE
+    if step_name in _ANALYST_STEPS:
+        return ANALYST_TEMPERATURE
+    return None
+
+
 # Phase 2 capability table. `supports_native_structured_output` is False for
 # every provider because we have NOT validated the wiring yet (the Anthropic
 # `output_config.format` API and OpenAI `response_format` are spikes; Ollama
@@ -109,8 +169,27 @@ def options_for_step(
     *,
     is_judge: bool = False,
 ) -> LLMCallOptions:
+    """Build per-step call options.
+
+    Temperature resolution order:
+      1. Mock provider → always its capability temperatures (0.0) so tests
+         stay deterministic regardless of the role band.
+      2. Real provider → the per-role band from `temperature_for_role`
+         (writer 0.6 / evaluator 0.2 / analyst 0.3).
+      3. Unmapped step on a real provider → fall back to the provider's
+         judge/default temperature (legacy behaviour).
+    """
     cap = get_capability(provider_name)
-    temp = cap.judge_temperature if is_judge else cap.default_temperature
+    fallback_temp = cap.judge_temperature if is_judge else cap.default_temperature
+
+    if provider_name == "mock":
+        # Deterministic-by-contract provider: ignore the role band so the
+        # test suite's fixed-output expectations hold.
+        temp = fallback_temp
+    else:
+        role_temp = temperature_for_role(step_name)
+        temp = role_temp if role_temp is not None else fallback_temp
+
     return LLMCallOptions(
         step_name=step_name,
         temperature=temp,
@@ -122,9 +201,13 @@ def options_for_step(
 
 
 __all__ = [
+    "ANALYST_TEMPERATURE",
+    "EVALUATOR_TEMPERATURE",
     "LLMCallOptions",
     "PROVIDER_CAPABILITIES",
     "ProviderCapability",
+    "WRITER_TEMPERATURE",
     "get_capability",
     "options_for_step",
+    "temperature_for_role",
 ]

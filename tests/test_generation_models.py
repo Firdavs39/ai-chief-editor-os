@@ -21,7 +21,8 @@ def test_generation_run_persists(session) -> None:
     assert run.id
     assert run.created_at and run.updated_at
     assert run.status == "queued"
-    assert run.total_steps == 8
+    # Placeholder default; enqueue_run overwrites with live TOTAL_STEPS (11).
+    assert run.total_steps == 11
     assert run.step_index == 0
     assert run.candidate_id is None
 
