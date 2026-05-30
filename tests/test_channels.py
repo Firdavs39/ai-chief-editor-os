@@ -46,11 +46,41 @@ from chief_editor.models import (
 )
 from chief_editor.services.channels import (
     DEFAULT_CHANNEL_SLUG,
+    ensure_channel_columns,
     ensure_default_channel,
     get_default_channel,
     slugify,
 )
 from chief_editor.services.generation import enqueue_run
+
+
+def test_ensure_channel_columns_adds_missing_and_is_idempotent() -> None:
+    """Regression for the create_all-can't-ALTER gap: a pre-multi-channel DB
+    has generation_runs/post_candidates WITHOUT channel_id, and the ORM then
+    fails 'no such column'. ensure_channel_columns must add it in-place."""
+    from sqlalchemy import create_engine
+
+    eng = create_engine("sqlite://")
+    with eng.begin() as conn:
+        conn.exec_driver_sql("CREATE TABLE generation_runs (id VARCHAR PRIMARY KEY)")
+        conn.exec_driver_sql("CREATE TABLE post_candidates (id VARCHAR PRIMARY KEY)")
+
+    added = ensure_channel_columns(eng)
+    assert "generation_runs.channel_id" in added
+    assert "post_candidates.channel_id" in added
+
+    # Idempotent: a second run adds nothing.
+    assert ensure_channel_columns(eng) == []
+
+    # The column is really there.
+    with eng.connect() as conn:
+        cols = {
+            r[1]
+            for r in conn.exec_driver_sql(
+                "PRAGMA table_info(generation_runs)"
+            ).fetchall()
+        }
+    assert "channel_id" in cols
 
 # ---------------------------------------------------------------------------
 # Helpers

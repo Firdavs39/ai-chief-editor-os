@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 import re
 
+from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
 from ..models import (
@@ -66,6 +67,44 @@ def _default_style_profile_id(session: Session) -> str | None:
         select(StyleProfile).where(StyleProfile.name == "default")
     ).first()
     return profile.id if profile else None
+
+
+def ensure_channel_columns(engine: Engine) -> list[str]:
+    """Add multi-channel columns that `SQLModel.metadata.create_all` cannot.
+
+    create_all only CREATES missing tables; it never ALTERs an existing one.
+    A deployment that predates the multi-channel work already has
+    `generation_runs` / `post_candidates` tables WITHOUT `channel_id`, so the
+    ORM (which now selects that column) fails with "no such column". This adds
+    the column in-place. SQLite-only, idempotent, non-destructive (the new
+    column is nullable). Other dialects must use a real migration tool.
+
+    Returns the list of `table.column` entries actually added.
+    """
+    if engine.dialect.name != "sqlite":
+        return []  # Postgres/etc. -> use Alembic or equivalent, not this shim.
+
+    targets = {
+        "generation_runs": "channel_id",
+        "post_candidates": "channel_id",
+    }
+    added: list[str] = []
+    with engine.begin() as conn:
+        for table, col in targets.items():
+            rows = conn.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()
+            if not rows:
+                # Table doesn't exist yet -> create_all will make it fresh with
+                # the column. Nothing to ALTER.
+                continue
+            existing = {r[1] for r in rows}
+            if col not in existing:
+                conn.exec_driver_sql(
+                    f"ALTER TABLE {table} ADD COLUMN {col} VARCHAR"
+                )
+                added.append(f"{table}.{col}")
+    if added:
+        log.info("channels.columns.added %s", ", ".join(added))
+    return added
 
 
 def ensure_default_channel(session: Session) -> Channel:

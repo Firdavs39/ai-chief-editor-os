@@ -87,7 +87,14 @@ def init_db() -> None:
     # prevent the API/worker from booting (the per-channel code paths all fall
     # back to single-channel behaviour when no default channel exists).
     try:
-        from .services.channels import ensure_default_channel
+        from .services.channels import (
+            ensure_channel_columns,
+            ensure_default_channel,
+        )
+
+        # ALTER pre-existing tables for the new channel_id columns BEFORE any
+        # query touches them (create_all can't add columns to old tables).
+        ensure_channel_columns(get_engine())
 
         with Session(get_engine()) as session:
             ensure_default_channel(session)
