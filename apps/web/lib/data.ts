@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, channelsApi } from "./api";
 import {
   demoAnalytics,
   demoCalendar,
@@ -13,6 +13,7 @@ import type {
   ApiConnection,
   CalendarEntry,
   Candidate,
+  Channel,
   PublishJob,
   ReadinessReport,
   Source,
@@ -86,6 +87,13 @@ export const data = {
     }
   },
   jobs: () => safeOr<PublishJob[]>(api.jobs(), demoJobs),
+  channels: async (): Promise<Channel[]> => {
+    try {
+      return await channelsApi.list();
+    } catch {
+      return [];
+    }
+  },
   calendar: () => safeOr<CalendarEntry[]>(api.calendar(), demoCalendar),
   analytics: () => safeOr<AnalyticsResponse>(api.analytics(), demoAnalytics),
   style: () => safeOr<StyleProfile>(api.styleProfile(), demoStyle),

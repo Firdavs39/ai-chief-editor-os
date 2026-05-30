@@ -2,6 +2,9 @@ import type {
   AnalyticsResponse,
   CalendarEntry,
   Candidate,
+  Channel,
+  ChannelCreate,
+  ChannelUpdate,
   DryRunPreview,
   GenerationArtifact,
   GenerationRun,
@@ -354,5 +357,92 @@ export const runsApi = {
     runsRequest<GenerationRun>(`/generation-runs/${id}/cancel`, adminToken, {
       method: "POST",
       body: "{}",
+    }),
+};
+
+// ---- Channels (multi-channel publishing) -----------------------------------
+// Reads (`list`, `get`) are open — consistent with /sources and /trends.
+// Mutations carry X-Admin-Token, which the caller pulls from React memory
+// (lib/operator-auth.tsx) and passes explicitly. The token is NEVER read from
+// localStorage / sessionStorage / cookies / URL.
+//
+// `target_chat_id` is a PUBLIC channel identifier; a bot token is never sent
+// or returned here — it stays in the Vault, resolved via `bot_provider`.
+
+export type ChannelApiError = Error & {
+  code?: "admin_token_required" | "admin_token_invalid" | "conflict" | "not_found";
+  detail?: string;
+};
+
+async function channelsMutate<T>(
+  path: string,
+  adminToken: string,
+  init: RequestInit = {},
+): Promise<T> {
+  if (!adminToken) {
+    const err = new Error("admin_token_required") as ChannelApiError;
+    err.code = "admin_token_required";
+    throw err;
+  }
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Admin-Token": adminToken,
+      ...(init.headers || {}),
+    },
+    cache: "no-store",
+  });
+  if (res.status === 401) {
+    const err = new Error("admin_token_invalid") as ChannelApiError;
+    err.code = "admin_token_invalid";
+    throw err;
+  }
+  if (res.status === 404) {
+    const err = new Error("not_found") as ChannelApiError;
+    err.code = "not_found";
+    throw err;
+  }
+  if (res.status === 409) {
+    const body = await res.json().catch(() => ({}));
+    const detail = (body as { detail?: string }).detail ?? "conflict";
+    const err = new Error(detail) as ChannelApiError;
+    err.code = "conflict";
+    err.detail = detail;
+    throw err;
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${res.statusText}: ${body.slice(0, 200)}`);
+  }
+  if (res.status === 204) {
+    return undefined as unknown as T;
+  }
+  return (await res.json()) as T;
+}
+
+export const channelsApi = {
+  // Open reads.
+  list: () => request<Channel[]>("/channels", {}, []),
+  get: (id: string) => request<Channel>(`/channels/${id}`),
+  // Admin-gated mutations.
+  create: (body: ChannelCreate, adminToken: string) =>
+    channelsMutate<Channel>("/channels", adminToken, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  update: (id: string, body: ChannelUpdate, adminToken: string) =>
+    channelsMutate<Channel>(`/channels/${id}`, adminToken, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  attachSource: (id: string, sourceId: string, adminToken: string) =>
+    channelsMutate<Channel>(`/channels/${id}/sources`, adminToken, {
+      method: "POST",
+      body: JSON.stringify({ source_id: sourceId }),
+    }),
+  detachSource: (id: string, sourceId: string, adminToken: string) =>
+    channelsMutate<void>(`/channels/${id}/sources/${sourceId}`, adminToken, {
+      method: "DELETE",
     }),
 };
