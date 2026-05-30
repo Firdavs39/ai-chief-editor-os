@@ -107,64 +107,75 @@ def main() -> int:
     # Explicit login flow so we can tell the user HOW Telegram delivered the
     # code (app / sms / call / missed-call). The high-level client.start()
     # hides this, which makes "the code never arrived" impossible to debug.
+    # Telethon methods are coroutines — we drive them on the client's own
+    # event loop. input()/getpass() block that loop, which is fine for a CLI.
     from telethon.errors import (  # type: ignore
         PhoneCodeInvalidError,
         SessionPasswordNeededError,
     )
 
+    _DELIVERY = {
+        "SentCodeTypeApp": (
+            "IN THE TELEGRAM APP — open Telegram, look for a message from "
+            "the 'Telegram' service chat (blue checkmark) at the top."
+        ),
+        "SentCodeTypeSms": "by SMS to your phone.",
+        "SentCodeTypeCall": (
+            "by a PHONE CALL — answer it, an automated voice reads the digits."
+        ),
+        "SentCodeTypeFlashCall": (
+            "by a FLASH CALL — the code is part of the incoming call's number."
+        ),
+        "SentCodeTypeMissedCall": (
+            "by a MISSED CALL — Telegram calls and hangs up; the CODE is the "
+            "LAST DIGITS of the phone number that called you. Check your call log."
+        ),
+    }
+
     client = TelegramClient(str(session_path), api_id, api_hash)
-    try:
-        client.connect()
 
-        phone = input("Phone (with country code, e.g. +99890XXXXXXX): ").strip()
-        sent = client.send_code_request(phone)
-
-        type_name = type(sent.type).__name__
-        human = {
-            "SentCodeTypeApp": (
-                "IN THE TELEGRAM APP — open Telegram, look for a message from "
-                "the 'Telegram' service chat (blue checkmark) at the top."
-            ),
-            "SentCodeTypeSms": "by SMS to your phone.",
-            "SentCodeTypeCall": (
-                "by a PHONE CALL — answer it, an automated voice reads the digits."
-            ),
-            "SentCodeTypeFlashCall": (
-                "by a FLASH CALL — the code is part of the incoming call's number."
-            ),
-            "SentCodeTypeMissedCall": (
-                "by a MISSED CALL — Telegram calls and hangs up; the CODE is the "
-                "LAST DIGITS of the phone number that called you. Check your call log."
-            ),
-        }.get(type_name, f"via {type_name}.")
-        print(f"\n>>> Telegram sent the code {human}")
-        nxt = getattr(sent, "next_type", None)
-        if nxt is not None:
-            print(
-                f">>> If nothing arrives in ~60s, Telegram will retry via "
-                f"{type(nxt).__name__}. Keep this window open and wait."
-            )
-        print()
-
-        code = input("Enter the code: ").strip()
+    async def _login() -> int:
+        await client.connect()
         try:
-            client.sign_in(phone, code)
-        except SessionPasswordNeededError:
-            print("\nThis account has 2FA enabled.")
-            pw = getpass.getpass("Enter your Telegram 2FA password: ")
-            client.sign_in(password=pw)
-        except PhoneCodeInvalidError:
-            print(
-                "Code rejected as invalid. Re-run the script and try again "
-                "(make sure you typed the exact digits).",
-                file=sys.stderr,
-            )
-            return 7
+            phone = input("Phone (with country code, e.g. +99890XXXXXXX): ").strip()
+            sent = await client.send_code_request(phone)
+
+            type_name = type(sent.type).__name__
+            human = _DELIVERY.get(type_name, f"via {type_name}.")
+            print(f"\n>>> Telegram sent the code {human}")
+            nxt = getattr(sent, "next_type", None)
+            if nxt is not None:
+                print(
+                    f">>> If nothing arrives in ~60s, Telegram will retry via "
+                    f"{type(nxt).__name__}. Keep this window open and wait."
+                )
+            print()
+
+            code = input("Enter the code: ").strip()
+            try:
+                await client.sign_in(phone, code)
+            except SessionPasswordNeededError:
+                print("\nThis account has 2FA enabled.")
+                pw = getpass.getpass("Enter your Telegram 2FA password: ")
+                await client.sign_in(password=pw)
+            except PhoneCodeInvalidError:
+                print(
+                    "Code rejected as invalid. Re-run the script and try again "
+                    "(make sure you typed the exact digits).",
+                    file=sys.stderr,
+                )
+                return 7
+            return 0
+        finally:
+            await client.disconnect()
+
+    try:
+        rc = client.loop.run_until_complete(_login())
     except Exception as e:  # noqa: BLE001 — surface concrete error
         print(f"Telethon login failed: {type(e).__name__}: {e}", file=sys.stderr)
         return 6
-    finally:
-        client.disconnect()
+    if rc != 0:
+        return rc
 
     # Set conservative file permissions where supported (POSIX only;
     # Windows ACLs are managed by user profile).
