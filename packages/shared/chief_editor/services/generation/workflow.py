@@ -35,6 +35,8 @@ from ...llm import get_llm_provider
 from ...llm.base import LLMProvider
 from ...llm.registry import get_fallback_llm_provider
 from ...models import (
+    Channel,
+    ChannelSource,
     GenerationArtifact,
     GenerationRun,
     GenerationStep,
@@ -46,6 +48,7 @@ from ...models import (
 )
 from ...settings import get_settings
 from ...time_utils import utcnow
+from ..channels import get_default_channel
 from . import prompts
 from .artifacts import get_run_artifacts_by_name, validate_payload
 from .finalizer import finalize_candidate
@@ -62,7 +65,34 @@ _TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
 # ---------------------------------------------------------------------------
 
 
-def _load_style(session: Session) -> StyleProfile | None:
+def _resolve_channel(session: Session, run: GenerationRun) -> Channel | None:
+    """Resolve the run's channel: explicit FK → default channel → None.
+
+    Legacy runs (`channel_id` NULL) fall back to the default channel so the
+    correct style/sources are still used. Brand-new deployments with no
+    default channel yet return None and the caller uses single-channel
+    behaviour (default style profile, unfiltered raw items).
+    """
+    if run.channel_id:
+        channel = session.get(Channel, run.channel_id)
+        if channel is not None:
+            return channel
+    return get_default_channel(session)
+
+
+def _load_style(session: Session, run: GenerationRun) -> StyleProfile | None:
+    """Load the style profile for this run's channel.
+
+    Resolution order:
+      1. run.channel_id → Channel.style_profile_id
+      2. default channel → its style_profile_id
+      3. StyleProfile where name == "default" (legacy single-channel fallback)
+    """
+    channel = _resolve_channel(session, run)
+    if channel is not None and channel.style_profile_id:
+        profile = session.get(StyleProfile, channel.style_profile_id)
+        if profile is not None:
+            return profile
     return session.exec(
         select(StyleProfile).where(StyleProfile.name == "default")
     ).first()
@@ -74,19 +104,56 @@ def _load_cluster(session: Session, run: GenerationRun) -> TrendCluster | None:
     return session.get(TrendCluster, run.cluster_id)
 
 
-def _load_raw_items(
-    session: Session, cluster: TrendCluster | None, limit: int = 5
-) -> list[RawItem]:
-    if cluster is None:
-        return []
-    return list(
+def _channel_source_ids(session: Session, run: GenerationRun) -> set[str] | None:
+    """Source ids linked to the run's channel, or None for no filtering.
+
+    Returns None when the run has no resolvable channel (legacy/NULL with no
+    default) — callers then keep the unfiltered single-channel behaviour.
+    """
+    channel = _resolve_channel(session, run)
+    if channel is None:
+        return None
+    return set(
         session.exec(
-            select(RawItem)
-            .join(TrendSignal, TrendSignal.raw_item_id == RawItem.id)
-            .where(TrendSignal.cluster_id == cluster.id)
-            .limit(limit)
+            select(ChannelSource.source_id).where(
+                ChannelSource.channel_id == channel.id
+            )
         ).all()
     )
+
+
+def _load_raw_items(
+    session: Session,
+    cluster: TrendCluster | None,
+    *,
+    run: GenerationRun,
+    limit: int = 5,
+) -> list[RawItem]:
+    """Raw items backing the cluster, restricted to the channel's sources.
+
+    Filtering by the channel's source pool prevents another channel's context
+    from leaking into this channel's prompts. When the run has no resolvable
+    channel (legacy NULL with no default), no filter is applied and the prior
+    single-channel behaviour is preserved.
+    """
+    if cluster is None:
+        return []
+
+    stmt = (
+        select(RawItem)
+        .join(TrendSignal, TrendSignal.raw_item_id == RawItem.id)
+        .where(TrendSignal.cluster_id == cluster.id)
+    )
+    source_ids = _channel_source_ids(session, run)
+    if source_ids is not None:
+        if not source_ids:
+            # Channel exists but has no linked sources → nothing to feed the
+            # prompt from this channel's pool. Return empty rather than leak
+            # the whole cluster's items.
+            return []
+        stmt = stmt.where(RawItem.source_id.in_(source_ids))  # type: ignore[attr-defined]
+
+    return list(session.exec(stmt.limit(limit)).all())
 
 
 def _model_name_for(provider_name: str) -> str:
@@ -400,9 +467,9 @@ def _execute_llm_step(
     over.
     """
     primary = get_llm_provider()
-    style = _load_style(session)
+    style = _load_style(session, run)
     cluster = _load_cluster(session, run)
-    raw_items = _load_raw_items(session, cluster, limit=5)
+    raw_items = _load_raw_items(session, cluster, run=run, limit=5)
     artifacts = get_run_artifacts_by_name(session, run)
 
     if step_def.system_builder is None or step_def.schema is None:

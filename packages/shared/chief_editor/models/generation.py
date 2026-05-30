@@ -29,6 +29,12 @@ class GenerationRun(TimestampedBase, table=True):
     cluster_id: str | None = Field(
         default=None, foreign_key="trend_clusters.id", index=True
     )
+    # Which outbound channel this run targets. NULL on legacy runs created
+    # before the multi-channel model; the workflow falls back to the default
+    # channel (then the default style profile) for those.
+    channel_id: str | None = Field(
+        default=None, foreign_key="channels.id", index=True
+    )
     requested_by: str = Field(default="api", max_length=32)
     # api | worker | manual
 

@@ -2,6 +2,7 @@
 
 from .approval import ApprovalDecision
 from .candidate import PostCandidate
+from .channel import Channel, ChannelSource
 from .generation import GenerationArtifact, GenerationRun, GenerationStep
 from .heartbeat import WorkerHeartbeat
 from .integration_secret import IntegrationSecret
@@ -15,6 +16,8 @@ from .trend import TrendCluster, TrendSignal
 
 __all__ = [
     "ApprovalDecision",
+    "Channel",
+    "ChannelSource",
     "GenerationArtifact",
     "GenerationRun",
     "GenerationStep",

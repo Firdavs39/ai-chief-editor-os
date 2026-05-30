@@ -150,3 +150,53 @@ class AnalyticsResponse(BaseModel):
     best_patterns: list[dict[str, Any]]
     learning_timeline: list[dict[str, Any]]
     totals: dict[str, Any]
+
+
+# ---------------------------------------------------------------------------
+# Channels (multi-channel publishing). `target_chat_id` is a PUBLIC channel
+# identifier — never a secret. Bot tokens stay in the Vault, resolved via
+# `bot_provider`, and are never carried by these schemas.
+# ---------------------------------------------------------------------------
+
+
+class ChannelCreate(BaseModel):
+    name: str
+    slug: str = ""  # auto-derived from name when empty
+    platform: Literal["telegram", "threads", "reddit"] = "telegram"
+    target_chat_id: str = ""
+    bot_provider: str = "telegram_bot"
+    lang: str = "ru"
+    style_profile_id: str | None = None
+    enabled: bool = True
+    settings: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChannelUpdate(BaseModel):
+    name: str | None = None
+    target_chat_id: str | None = None
+    bot_provider: str | None = None
+    lang: str | None = None
+    style_profile_id: str | None = None
+    enabled: bool | None = None
+    settings: dict[str, Any] | None = None
+
+
+class ChannelOut(BaseModel):
+    id: str
+    name: str
+    slug: str
+    platform: str
+    target_chat_id: str
+    bot_provider: str
+    lang: str
+    style_profile_id: str | None
+    enabled: bool
+    is_default: bool
+    settings: dict[str, Any]
+    source_ids: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChannelSourceLink(BaseModel):
+    source_id: str

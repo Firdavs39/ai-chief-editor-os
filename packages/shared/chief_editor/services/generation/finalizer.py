@@ -91,6 +91,7 @@ def finalize_candidate(session: Session, run: GenerationRun) -> dict:
 
     candidate = PostCandidate(
         cluster_id=run.cluster_id,
+        channel_id=run.channel_id,
         topic=str(final_brief.get("topic", "")),
         source_summary=str(final_brief.get("source_summary", "")),
         why_it_matters=str(final_brief.get("why_it_matters", "")),

@@ -53,16 +53,36 @@ class TelegramPublisher(Publisher):
         return PublishOutcome(success=True, external_url=url)
 
 
-def telegram_publisher_from_settings() -> TelegramPublisher | None:
+def telegram_publisher_from_settings(
+    target_override: str | None = None,
+) -> TelegramPublisher | None:
+    """Build a TelegramPublisher.
+
+    The bot token is always resolved the same way (env first, Vault fallback)
+    — multi-channel does NOT change how the secret is sourced.
+
+    `target_override` (e.g. a `Channel.target_chat_id`) selects the
+    destination chat. When it is empty/None we fall back to the env/Vault
+    `target_channel_id` so the default channel keeps working unchanged. A
+    publisher is only returned when BOTH a token and a resolved target exist;
+    otherwise None (caller falls back to the mock publisher or blocks).
+    """
+    override = (target_override or "").strip()
+
     s = get_settings()
     if s.has_telegram_publish:
-        return TelegramPublisher(s.telegram_bot_token, s.telegram_target_channel_id)
-    # Vault fallback.
+        target = override or s.telegram_target_channel_id
+        if s.telegram_bot_token and target:
+            return TelegramPublisher(s.telegram_bot_token, target)
+        return None
+
+    # Vault fallback for the token; override wins for the target, else Vault
+    # target_channel_id is the default-channel fallback.
     from ..services.integration_config import resolve_provider
 
     resolved = resolve_provider("telegram_bot")
     token = resolved["bot_token"].value
-    target = resolved["target_channel_id"].value
+    target = override or resolved["target_channel_id"].value
     if token and target:
         return TelegramPublisher(token, target)
     return None
