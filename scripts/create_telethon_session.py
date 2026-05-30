@@ -100,19 +100,68 @@ def main() -> int:
 
     print(
         f"Creating Telethon session '{session_name}' in {session_dir}\n"
-        f"You will be prompted by Telethon for: phone, SMS code, "
-        f"optional 2FA password.\n"
-        f"None of this is logged by the AI assistant — it goes "
-        f"directly into Telethon over the encrypted TG protocol.\n"
+        f"Phone, code and optional 2FA password go directly into Telethon\n"
+        f"over the encrypted TG protocol — the AI assistant does not see them.\n"
     )
 
-    # Telethon's built-in interactive login. It prints/reads using
-    # `input()` and `getpass()` directly — we don't intercept.
+    # Explicit login flow so we can tell the user HOW Telegram delivered the
+    # code (app / sms / call / missed-call). The high-level client.start()
+    # hides this, which makes "the code never arrived" impossible to debug.
+    from telethon.errors import (  # type: ignore
+        PhoneCodeInvalidError,
+        SessionPasswordNeededError,
+    )
+
     client = TelegramClient(str(session_path), api_id, api_hash)
     try:
-        client.start()
+        client.connect()
+
+        phone = input("Phone (with country code, e.g. +99890XXXXXXX): ").strip()
+        sent = client.send_code_request(phone)
+
+        type_name = type(sent.type).__name__
+        human = {
+            "SentCodeTypeApp": (
+                "IN THE TELEGRAM APP — open Telegram, look for a message from "
+                "the 'Telegram' service chat (blue checkmark) at the top."
+            ),
+            "SentCodeTypeSms": "by SMS to your phone.",
+            "SentCodeTypeCall": (
+                "by a PHONE CALL — answer it, an automated voice reads the digits."
+            ),
+            "SentCodeTypeFlashCall": (
+                "by a FLASH CALL — the code is part of the incoming call's number."
+            ),
+            "SentCodeTypeMissedCall": (
+                "by a MISSED CALL — Telegram calls and hangs up; the CODE is the "
+                "LAST DIGITS of the phone number that called you. Check your call log."
+            ),
+        }.get(type_name, f"via {type_name}.")
+        print(f"\n>>> Telegram sent the code {human}")
+        nxt = getattr(sent, "next_type", None)
+        if nxt is not None:
+            print(
+                f">>> If nothing arrives in ~60s, Telegram will retry via "
+                f"{type(nxt).__name__}. Keep this window open and wait."
+            )
+        print()
+
+        code = input("Enter the code: ").strip()
+        try:
+            client.sign_in(phone, code)
+        except SessionPasswordNeededError:
+            print("\nThis account has 2FA enabled.")
+            pw = getpass.getpass("Enter your Telegram 2FA password: ")
+            client.sign_in(password=pw)
+        except PhoneCodeInvalidError:
+            print(
+                "Code rejected as invalid. Re-run the script and try again "
+                "(make sure you typed the exact digits).",
+                file=sys.stderr,
+            )
+            return 7
     except Exception as e:  # noqa: BLE001 — surface concrete error
-        print(f"Telethon start failed: {type(e).__name__}: {e}", file=sys.stderr)
+        print(f"Telethon login failed: {type(e).__name__}: {e}", file=sys.stderr)
         return 6
     finally:
         client.disconnect()
