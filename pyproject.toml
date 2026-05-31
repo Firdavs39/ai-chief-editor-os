@@ -27,6 +27,7 @@ dependencies = [
     "openai>=1.55",
     "python-dotenv>=1.0",
     "cryptography>=43.0",
+    "json-repair>=0.59",
 ]
 
 [project.optional-dependencies]
