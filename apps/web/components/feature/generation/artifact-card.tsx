@@ -25,14 +25,14 @@ const ARTIFACT_LABELS: Record<string, { ru: string; icon: typeof FileText }> = {
   research_brief: { ru: "Исследование источников", icon: FileText },
   angle: { ru: "Стратегический угол", icon: Sparkles },
   psych: { ru: "Психология аудитории", icon: Sparkles },
-  tg_post: { ru: "Telegram Writer", icon: FileText },
-  threads_post: { ru: "Threads Writer", icon: FileText },
-  reddit_post: { ru: "Reddit Writer", icon: FileText },
-  critic_report: { ru: "Критик / Red Team", icon: Sparkles },
-  final_brief: { ru: "Главный редактор", icon: FileText },
-  fact_check: { ru: "Фактчек", icon: Sparkles },
-  quality_report: { ru: "Quality Judge", icon: Sparkles },
-  candidate_link: { ru: "Финализация", icon: Sparkles },
+  tg_post: { ru: "Текст для Telegram", icon: FileText },
+  threads_post: { ru: "Текст для Threads", icon: FileText },
+  reddit_post: { ru: "Текст для Reddit", icon: FileText },
+  critic_report: { ru: "Критика и слабые места", icon: Sparkles },
+  final_brief: { ru: "Работа главного редактора", icon: FileText },
+  fact_check: { ru: "Проверка фактов", icon: Sparkles },
+  quality_report: { ru: "Оценка качества", icon: Sparkles },
+  candidate_link: { ru: "Финальная сборка", icon: Sparkles },
 };
 
 // Per-artifact whitelist of fields the UI is allowed to render. Anything
@@ -105,11 +105,11 @@ const FIELD_LABELS_RU: Record<string, string> = {
   final_tg: "Финальный Telegram",
   final_threads: "Финальный Threads",
   final_reddit: "Финальный Reddit",
-  style_match_score: "Style match",
-  viral_score: "Viral",
-  slop_risk: "Slop risk",
-  controversy_risk: "Controversy risk",
-  hook_score: "Scroll-stop (0–1)",
+  style_match_score: "Совпадение со стилем",
+  viral_score: "Виральность",
+  slop_risk: "Риск ИИ-штампов",
+  controversy_risk: "Риск спорности",
+  hook_score: "Сила крючка (0–1)",
   recommendation: "Рекомендация",
   unsupported_claims: "Неподтверждённые утверждения",
   grounding_score: "Привязка к фактам (0–1)",
@@ -130,7 +130,7 @@ function renderValue(value: unknown): React.ReactNode {
     return <span>{value}</span>;
   }
   if (typeof value === "boolean") {
-    return <span>{value ? "yes" : "no"}</span>;
+    return <span>{value ? "да" : "нет"}</span>;
   }
   if (typeof value === "string") {
     return <span className="whitespace-pre-wrap break-words">{value}</span>;
@@ -155,7 +155,7 @@ function renderValue(value: unknown): React.ReactNode {
   // change goes wrong — in which case we show a tag rather than the
   // raw payload.
   return (
-    <span className="text-ink-500 italic">[non-primitive value hidden]</span>
+    <span className="text-ink-500 italic">[значение скрыто]</span>
   );
 }
 

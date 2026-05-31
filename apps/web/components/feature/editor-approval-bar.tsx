@@ -21,13 +21,13 @@ export function EditorApprovalBar({ candidate }: { candidate: Candidate }) {
         reason: "approved from editor",
         platform: "telegram",
       });
-      toast.success("Approved & scheduled", {
-        description: "Кандидат поставлен в очередь публикации.",
+      toast.success("Готово: пост одобрен", {
+        description: "Пост поставлен в очередь на публикацию.",
       });
       router.refresh();
     } catch {
-      toast.error("Approval failed", {
-        description: "API недоступен. Если открыто в demo-режиме — это ожидаемо.",
+      toast.error("Ошибка: не удалось одобрить", {
+        description: "Сервер недоступен. Попробуйте ещё раз.",
       });
     } finally {
       setBusy(null);
@@ -38,10 +38,12 @@ export function EditorApprovalBar({ candidate }: { candidate: Candidate }) {
     setBusy("reject");
     try {
       await api.reject(candidate.id, { reason: "rejected from editor" });
-      toast.success("Rejected");
+      toast.success("Готово: пост отклонён");
       router.refresh();
     } catch {
-      toast.error("Reject failed");
+      toast.error("Ошибка: не удалось отклонить", {
+        description: "Сервер недоступен. Попробуйте ещё раз.",
+      });
     } finally {
       setBusy(null);
     }
@@ -56,10 +58,10 @@ export function EditorApprovalBar({ candidate }: { candidate: Candidate }) {
           </div>
           <div className="min-w-0">
             <div className="text-[12px] font-medium text-ink-50 leading-tight">
-              Approval-gated publish
+              Публикация только после одобрения
             </div>
             <div className="text-[11px] text-ink-400 leading-tight truncate">
-              Decision is logged and required before the publisher dispatches.
+              Решение фиксируется и обязательно перед любой отправкой.
             </div>
           </div>
         </div>
@@ -72,7 +74,7 @@ export function EditorApprovalBar({ candidate }: { candidate: Candidate }) {
             className="flex-1 text-state-danger hover:bg-state-danger/10 hover:border-state-danger/30 sm:flex-none"
           >
             <XCircle className="h-3.5 w-3.5" />
-            Reject
+            {busy === "reject" ? "Отклоняю…" : "Отклонить"}
           </Button>
           <Button
             size="sm"
@@ -81,7 +83,7 @@ export function EditorApprovalBar({ candidate }: { candidate: Candidate }) {
             className="flex-1 sm:flex-none"
           >
             <CheckCircle2 className="h-3.5 w-3.5" />
-            {isDecided ? "Already approved" : "Approve & schedule"}
+            {isDecided ? "Уже одобрено" : busy === "approve" ? "Одобряю…" : "Одобрить и в очередь"}
           </Button>
         </div>
       </div>

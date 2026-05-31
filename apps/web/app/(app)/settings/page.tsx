@@ -11,7 +11,6 @@ import {
   ShieldAlert,
   Wifi,
 } from "lucide-react";
-import { Toaster } from "sonner";
 import { Topbar } from "@/components/layout/topbar";
 import { PageShell, PageSection } from "@/components/layout/page-shell";
 import { Card } from "@/components/ui/card";
@@ -23,6 +22,13 @@ import { IntegrationsVault } from "@/components/feature/vault/integrations-vault
 import { data } from "@/lib/data";
 import type { ApiConnection } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+const CONNECTION_STATE_RU: Record<string, string> = {
+  connected: "подключено",
+  worker_stale: "процесс молчит",
+  missing_integrations: "нет подключений",
+  fallback: "демо без сервера",
+};
 
 export default async function SettingsPage() {
   const [status, readiness, candidates, sources, jobs, connection] = await Promise.all([
@@ -38,11 +44,10 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <Toaster theme="dark" position="top-right" />
       <Topbar
-        title="Settings"
-        subtitle="Live Mode control center — readiness, integrations, safety"
-        pill={{ label: live ? "Live Mode" : "Demo Mode", tone: live ? "violet" : "cyan" }}
+        title="Настройки"
+        subtitle="Готовность к боевому режиму, подключения и безопасность"
+        pill={{ label: live ? "Боевой режим" : "Демо-режим", tone: live ? "violet" : "cyan" }}
       />
       <PageShell>
         {/* Safety banner */}
@@ -53,65 +58,66 @@ export default async function SettingsPage() {
             </div>
             <div className="min-w-0 flex-1 text-sm text-ink-100">
               <div className="font-medium text-ink-50">
-                No real post can be sent without explicit approval.
+                Без вашего одобрения ни один пост не уйдёт.
               </div>
               <div className="text-xs text-ink-300 mt-0.5 leading-relaxed">
-                Test buttons never publish. Dry-run previews never contact external services.
-                Three independent layers enforce the approval gate.
+                Кнопки проверки ничего не публикуют. Тестовый просмотр не связывается
+                с внешними сервисами. Запрет на публикацию без одобрения держат
+                три независимых слоя защиты.
               </div>
             </div>
             <Badge variant="violet" className="hidden sm:inline-flex">
-              defense in depth
+              тройная защита
             </Badge>
           </div>
         </Card>
 
         {/* Mode overview */}
-        <PageSection title="Mode overview" description="Five flags control how the system behaves">
+        <PageSection title="Режимы работы" description="Пять переключателей определяют, как ведёт себя система">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <ModeCard
-              label="Demo Mode"
+              label="Демо-режим"
               flag={status.demo_mode}
               tone="cyan"
               icon={Beaker}
-              on="Dashboard shows demo content"
-              off="Live data only"
+              on="Показываются демо-данные"
+              off="Только реальные данные"
               envVar="DEMO_MODE"
             />
             <ModeCard
-              label="Mock Adapters"
+              label="Заглушки сервисов"
               flag={status.mock_mode}
               tone="cyan"
               icon={CircleDot}
-              on="Adapters degrade to mock"
-              off="Missing creds error out"
+              on="Без ключей работают заглушки"
+              off="Без ключей будет ошибка"
               envVar="MOCK_MODE"
             />
             <ModeCard
-              label="Live Mode"
+              label="Боевой режим"
               flag={status.live_mode}
               tone="violet"
               icon={Wifi}
-              on="UI expects real config"
-              off="Demo UX active"
+              on="Нужны реальные настройки"
+              off="Активен демо-режим"
               envVar="LIVE_MODE"
             />
             <ModeCard
-              label="Dry Run Publish"
+              label="Тестовая публикация"
               flag={status.dry_run_publish}
               tone="violet"
               icon={Shield}
-              on="Compute payload, do not send"
-              off="Real publish path active"
+              on="Готовит текст, но не отправляет"
+              off="Реальная отправка включена"
               envVar="DRY_RUN_PUBLISH"
             />
             <ModeCard
-              label="Publishing Enabled"
+              label="Публикация включена"
               flag={status.publishing_enabled}
               tone="rose"
               icon={ShieldAlert}
-              on="MASTER GATE — real publish reachable"
-              off="No real publish possible"
+              on="ГЛАВНЫЙ переключатель — реальная отправка доступна"
+              off="Реальная отправка невозможна"
               envVar="PUBLISHING_ENABLED"
               dangerOn
             />
@@ -123,8 +129,8 @@ export default async function SettingsPage() {
 
         {/* Integrations vault */}
         <PageSection
-          title="Integrations vault"
-          description="Add API keys without editing .env. Encrypted at rest. Env vars keep priority."
+          title="Хранилище ключей"
+          description="Добавляйте ключи API без правки файла .env. Хранятся в зашифрованном виде. Значения из .env имеют приоритет."
         >
           <IntegrationsVault />
         </PageSection>
@@ -140,8 +146,8 @@ export default async function SettingsPage() {
         {/* Readiness sections */}
         {readiness ? (
           <PageSection
-            title="Readiness checklist"
-            description={`Overall ${readiness.overall_score}% — ${readiness.overall_label}`}
+            title="Готовность к запуску"
+            description={`Готовность ${readiness.overall_score}% — ${readiness.overall_label}`}
           >
             <div className="grid gap-3 lg:grid-cols-2 3xl:grid-cols-2">
               {readiness.sections.map((section) => (
@@ -151,8 +157,8 @@ export default async function SettingsPage() {
           </PageSection>
         ) : (
           <Card className="p-6 text-center text-sm text-ink-400">
-            Readiness report unavailable — backend is not reachable. Start the API to populate
-            this section.
+            Отчёт о готовности недоступен — сервер не отвечает. Запустите бэкенд,
+            чтобы заполнить этот раздел.
           </Card>
         )}
 
@@ -160,27 +166,27 @@ export default async function SettingsPage() {
         <Card className="p-4 sm:p-5">
           <div className="flex items-center gap-2 text-sm font-medium text-ink-50">
             <KeyRound className="h-4 w-4 text-accent-cyan" />
-            Switching to Live Mode (safe path)
+            Как безопасно перейти в боевой режим
           </div>
           <ol className="mt-2 space-y-1 pl-4 text-xs text-ink-300 leading-relaxed list-decimal">
             <li>
-              Fill <code className="text-ink-100">.env</code> values (see{" "}
-              <code className="text-ink-100">.env.example</code> and{" "}
+              Заполните значения в <code className="text-ink-100">.env</code> (см.{" "}
+              <code className="text-ink-100">.env.example</code> и{" "}
               <code className="text-ink-100">docs/INTEGRATIONS.md</code>).
             </li>
             <li>
-              Set <code className="text-ink-100">LIVE_MODE=true</code> and{" "}
+              Поставьте <code className="text-ink-100">LIVE_MODE=true</code> и{" "}
               <code className="text-ink-100">MOCK_MODE=false</code>.
             </li>
             <li>
-              Keep <code className="text-ink-100">DRY_RUN_PUBLISH=true</code> for the first
-              full pass.
+              На первый полный прогон оставьте{" "}
+              <code className="text-ink-100">DRY_RUN_PUBLISH=true</code>.
             </li>
-            <li>Run readiness tests for each integration from the buttons above.</li>
-            <li>Approve one candidate → review dry-run preview in editor.</li>
+            <li>Проверьте каждое подключение кнопками выше.</li>
+            <li>Одобрите один пост → посмотрите тестовый просмотр в редакторе.</li>
             <li>
-              Only when everything is green: set{" "}
-              <code className="text-ink-100">DRY_RUN_PUBLISH=false</code> and{" "}
+              Только когда всё зелёное: поставьте{" "}
+              <code className="text-ink-100">DRY_RUN_PUBLISH=false</code> и{" "}
               <code className="text-ink-100">PUBLISHING_ENABLED=true</code>.
             </li>
           </ol>
@@ -197,36 +203,36 @@ function ConnectionCard({ connection }: { connection: ApiConnection }) {
         return {
           icon: PlugZap,
           tone: "success" as const,
-          label: "API connected",
-          hint: "Frontend talks to the live API. Worker is fresh.",
+          label: "Сервер подключён",
+          hint: "Дашборд работает с живым API. Фоновый процесс активен.",
         };
       case "worker_stale":
         return {
           icon: AlertTriangle,
           tone: "warning" as const,
-          label: "Worker stale",
-          hint: `API is reachable, but the worker hasn't reported a heartbeat (overall: ${
-            connection.worker_overall ?? "unknown"
-          }). Approvals will not dispatch until the worker is healthy again.`,
+          label: "Фоновый процесс молчит",
+          hint: `API доступен, но фоновый процесс давно не выходил на связь (статус: ${
+            connection.worker_overall ?? "неизвестно"
+          }). Пока он не восстановится, одобренные посты не будут отправляться.`,
         };
       case "missing_integrations":
         return {
           icon: Radio,
           tone: "warning" as const,
-          label: "Integrations missing",
+          label: "Не хватает подключений",
           hint:
-            "Live Mode is on but critical adapters are not configured: " +
+            "Боевой режим включён, но не настроены важные сервисы: " +
             (connection.missing?.join(", ") ?? "—") +
-            ". The system will fall back to mock/blocked safely.",
+            ". Система безопасно переключится на заглушки или заблокирует отправку.",
         };
       default:
         return {
           icon: Plug,
           tone: "warning" as const,
-          label: "Demo fallback",
+          label: "Демо без сервера",
           hint:
-            "Frontend cannot reach the API. All screens render from lib/demo-fallback. " +
-            "Set NEXT_PUBLIC_API_URL in Vercel to a reachable backend (see docs/DEPLOY_BACKEND_RUNTIME.md).",
+            "Дашборд не может достучаться до API — все экраны показывают демо-данные. " +
+            "Укажите NEXT_PUBLIC_API_URL в Vercel на доступный бэкенд (см. docs/DEPLOY_BACKEND_RUNTIME.md).",
         };
     }
   })();
@@ -258,16 +264,16 @@ function ConnectionCard({ connection }: { connection: ApiConnection }) {
             <span className="text-sm font-medium text-ink-50">{meta.label}</span>
             <Badge variant={badgeVariant}>
               <span className={cn("h-1.5 w-1.5 rounded-full", dotClass)} />
-              {connection.state.replace("_", " ")}
+              {CONNECTION_STATE_RU[connection.state] ?? connection.state.replace("_", " ")}
             </Badge>
           </div>
           <p className="mt-1 text-[12px] text-ink-300 leading-relaxed">{meta.hint}</p>
           <div className="mt-1.5 text-[11px] text-ink-500">
-            backend URL <span className="font-mono text-ink-300">{connection.base}</span>
+            адрес сервера <span className="font-mono text-ink-300">{connection.base}</span>
             {connection.worker_overall && (
               <>
                 <span className="mx-1.5 text-ink-600">·</span>
-                worker{" "}
+                фоновый процесс{" "}
                 <span className="font-mono text-ink-300">{connection.worker_overall}</span>
               </>
             )}
@@ -278,9 +284,9 @@ function ConnectionCard({ connection }: { connection: ApiConnection }) {
         <>
           <Separator className="my-3" />
           <p className="text-[11px] text-ink-400 leading-relaxed">
-            To leave fallback: deploy the backend (see{" "}
-            <code className="text-ink-100">docs/DEPLOY_BACKEND_RUNTIME.md</code>) and set{" "}
-            <code className="text-ink-100">NEXT_PUBLIC_API_URL</code> in your Vercel project.
+            Чтобы выйти из демо-режима: разверните бэкенд (см.{" "}
+            <code className="text-ink-100">docs/DEPLOY_BACKEND_RUNTIME.md</code>) и укажите{" "}
+            <code className="text-ink-100">NEXT_PUBLIC_API_URL</code> в проекте Vercel.
           </p>
         </>
       )}
@@ -333,7 +339,7 @@ function ModeCard({
           }
           className="ml-auto"
         >
-          {active ? "ON" : "OFF"}
+          {active ? "ВКЛ" : "ВЫКЛ"}
         </Badge>
       </div>
       <div className="mt-2 text-[12px] text-ink-100 leading-snug min-h-[32px]">

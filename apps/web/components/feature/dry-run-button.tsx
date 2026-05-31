@@ -34,8 +34,8 @@ export function DryRunButton({
       const result = await api.dryRunPublish(candidateId, p);
       setPreview(result);
     } catch {
-      toast.error("Dry-run failed", {
-        description: "API недоступен. Открой страницу с подключённым бэкендом.",
+      toast.error("Ошибка: проверка не прошла", {
+        description: "Сервер недоступен. Попробуйте ещё раз.",
       });
     } finally {
       setLoading(false);
@@ -52,7 +52,7 @@ export function DryRunButton({
     >
       <SheetTrigger asChild>
         <Button variant="outline" size="sm" className="text-accent-cyan hover:border-accent-cyan/40">
-          <FileSearch className="h-3.5 w-3.5" /> Dry-run preview
+          <FileSearch className="h-3.5 w-3.5" /> Проверить (без отправки)
         </Button>
       </SheetTrigger>
       <SheetContent side="right" className="w-full sm:w-[420px] 3xl:w-[480px] p-5 overflow-y-auto">
@@ -61,9 +61,9 @@ export function DryRunButton({
             <Shield className="h-4 w-4 text-accent-cyan" strokeWidth={2.2} />
           </div>
           <div className="min-w-0">
-            <SheetTitle className="text-[14px]">Dry-run publish preview</SheetTitle>
+            <SheetTitle className="text-[14px]">Проверка перед публикацией</SheetTitle>
             <SheetDescription className="text-[11px]">
-              Exact payload the publisher would send. No external service is contacted.
+              Показываем, что именно ушло бы в канал. Никуда ничего не отправляется.
             </SheetDescription>
           </div>
         </div>
@@ -87,7 +87,7 @@ export function DryRunButton({
 
         {loading && (
           <div className="mt-4 flex items-center gap-2 text-sm text-ink-300">
-            <Loader2 className="h-4 w-4 animate-spin" /> Computing payload…
+            <Loader2 className="h-4 w-4 animate-spin" /> Готовлю текст…
           </div>
         )}
 
@@ -107,16 +107,16 @@ function PreviewBody({ preview }: { preview: DryRunPreview }) {
       <div className="flex flex-wrap gap-1.5">
         <Badge variant="cyan">{p.platform}</Badge>
         <Badge variant={overLimit ? "rose" : "outline"}>
-          {p.body_length} / {p.limits?.max_length ?? "?"} chars
+          {p.body_length} / {p.limits?.max_length ?? "?"} символов
         </Badge>
         <Badge variant={p.would_send ? "violet" : "outline"}>
-          {p.would_send ? "would-send" : "would-not-send"}
+          {p.would_send ? "отправилось бы" : "не отправилось бы"}
         </Badge>
       </div>
 
       <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
         <div className="text-[10px] uppercase tracking-[0.18em] text-ink-500 mb-1.5">
-          Body
+          Текст поста
         </div>
         <pre className="whitespace-pre-wrap break-words text-[12.5px] leading-relaxed text-ink-100 font-sans">
           {p.body}
@@ -134,7 +134,7 @@ function PreviewBody({ preview }: { preview: DryRunPreview }) {
 
       <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-1.5 text-[11px]">
         <div className="text-[10px] uppercase tracking-[0.18em] text-ink-500 mb-1">
-          Safety state
+          Состояние безопасности
         </div>
         <Row k="PUBLISHING_ENABLED" v={String(p.safety.publishing_enabled)} />
         <Row k="DRY_RUN_PUBLISH" v={String(p.safety.dry_run_publish)} />

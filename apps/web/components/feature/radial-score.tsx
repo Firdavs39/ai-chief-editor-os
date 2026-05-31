@@ -21,7 +21,7 @@ export function RadialScore({
     <div
       className="relative grid place-items-center"
       style={{ width: size, height: size }}
-      aria-label={`Score ${score}`}
+      aria-label={`Рейтинг ${score}`}
     >
       <svg width={size} height={size} className="-rotate-90">
         <circle

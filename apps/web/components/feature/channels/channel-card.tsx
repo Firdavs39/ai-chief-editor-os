@@ -72,8 +72,8 @@ export function ChannelCard({
     // Client-side guard mirrors the backend 409 — the default channel is the
     // fallback destination and cannot be disabled.
     if (channel.is_default && channel.enabled) {
-      toast.error("The default channel can't be disabled", {
-        description: "It's the fallback destination for unassigned candidates.",
+      toast.error("Основной канал нельзя выключить", {
+        description: "Это запасной канал для постов без назначенного канала.",
       });
       return;
     }
@@ -85,7 +85,7 @@ export function ChannelCard({
         getAdminToken(),
       );
       onChanged(updated);
-      toast.success(updated.enabled ? "Channel enabled" : "Channel disabled", {
+      toast.success(updated.enabled ? "Готово: канал включён" : "Готово: канал выключен", {
         description: updated.name,
       });
     } catch (err) {
@@ -116,7 +116,7 @@ export function ChannelCard({
             </span>
             {channel.is_default && (
               <Badge variant="violet">
-                <Star className="h-3 w-3" /> default
+                <Star className="h-3 w-3" /> основной
               </Badge>
             )}
             <Badge variant={channel.enabled ? "mint" : "outline"}>
@@ -126,7 +126,7 @@ export function ChannelCard({
                   channel.enabled ? "bg-accent-mint" : "bg-ink-500",
                 )}
               />
-              {channel.enabled ? "enabled" : "disabled"}
+              {channel.enabled ? "включён" : "выключен"}
             </Badge>
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-500 font-mono">
@@ -150,20 +150,20 @@ export function ChannelCard({
         <>
           {/* Meta grid */}
           <div className="grid grid-cols-2 gap-2 text-[12px]">
-            <Meta icon={Send} label="Target">
+            <Meta icon={Send} label="Куда">
               <span className="font-mono text-ink-200">
-                {channel.target_chat_id || <span className="text-ink-500">— not set —</span>}
+                {channel.target_chat_id || <span className="text-ink-500">— не указано —</span>}
               </span>
             </Meta>
-            <Meta icon={Languages} label="Language">
+            <Meta icon={Languages} label="Язык">
               <span className="uppercase text-ink-200">{channel.lang}</span>
             </Meta>
-            <Meta icon={Palette} label="Style">
+            <Meta icon={Palette} label="Стиль">
               <span className="text-ink-200">
                 {styleLabelFor(channel.style_profile_id, styleProfile)}
               </span>
             </Meta>
-            <Meta icon={Link2} label="Sources">
+            <Meta icon={Link2} label="Источники">
               <span className="num text-ink-200">{channel.source_ids.length}</span>
             </Meta>
           </div>
@@ -176,7 +176,7 @@ export function ChannelCard({
               onClick={() => setEditing(true)}
               className="flex-1"
             >
-              <Pencil className="h-3.5 w-3.5" /> Edit
+              <Pencil className="h-3.5 w-3.5" /> Изменить
             </Button>
             <Button
               variant="secondary"
@@ -184,20 +184,20 @@ export function ChannelCard({
               onClick={() => setSourcesOpen(true)}
               className="flex-1"
             >
-              <Settings2 className="h-3.5 w-3.5" /> Sources
+              <Settings2 className="h-3.5 w-3.5" /> Источники
             </Button>
             <button
               type="button"
               onClick={toggleEnabled}
               disabled={togglingEnabled}
               aria-pressed={channel.enabled}
-              aria-label={channel.enabled ? "Disable channel" : "Enable channel"}
+              aria-label={channel.enabled ? "Выключить канал" : "Включить канал"}
               title={
                 channel.is_default && channel.enabled
-                  ? "Default channel can't be disabled"
+                  ? "Основной канал нельзя выключить"
                   : channel.enabled
-                  ? "Disable channel"
-                  : "Enable channel"
+                  ? "Выключить канал"
+                  : "Включить канал"
               }
               className={cn(
                 "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50",
@@ -290,7 +290,7 @@ function ChannelEditor({
     try {
       const updated = await channelsApi.update(channel.id, body, getAdminToken());
       onChanged(updated);
-      toast.success("Channel updated", { description: updated.name });
+      toast.success("Готово: канал обновлён", { description: updated.name });
       onClose();
     } catch (err) {
       handleChannelError(err);
@@ -303,19 +303,19 @@ function ChannelEditor({
     <div className="space-y-3">
       <label className="block space-y-1">
         <span className="text-[11px] uppercase tracking-[0.14em] text-ink-500">
-          Target chat id
+          ID канала в Telegram
         </span>
         <Input
           value={targetChatId}
           onChange={(e) => setTargetChatId(e.target.value)}
-          placeholder="@buai_uz or -1001234567890"
+          placeholder="@buai_uz или -1001234567890"
           className="font-mono"
         />
       </label>
       <div className="grid grid-cols-2 gap-2">
         <label className="block space-y-1">
           <span className="text-[11px] uppercase tracking-[0.14em] text-ink-500">
-            Language
+            Язык
           </span>
           <select
             value={lang}
@@ -331,7 +331,7 @@ function ChannelEditor({
         </label>
         <label className="block space-y-1">
           <span className="text-[11px] uppercase tracking-[0.14em] text-ink-500">
-            Style
+            Стиль
           </span>
           <select
             value={styleId}
@@ -348,16 +348,16 @@ function ChannelEditor({
       </div>
       <div className="flex items-center justify-end gap-2 pt-0.5">
         <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
-          <X className="h-3.5 w-3.5" /> Cancel
+          <X className="h-3.5 w-3.5" /> Отмена
         </Button>
         <Button size="sm" onClick={save} disabled={saving}>
           {saving ? (
             <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Сохраняю…
             </>
           ) : (
             <>
-              <Check className="h-3.5 w-3.5" /> Save
+              <Check className="h-3.5 w-3.5" /> Сохранить
             </>
           )}
         </Button>
@@ -402,7 +402,7 @@ function ChannelSourcesSheet({
         getAdminToken(),
       );
       onChanged(updated);
-      toast.success("Source linked");
+      toast.success("Готово: источник привязан");
     } catch (err) {
       handleChannelError(err);
     } finally {
@@ -416,7 +416,7 @@ function ChannelSourcesSheet({
       await channelsApi.detachSource(channel.id, sourceId, getAdminToken());
       // DELETE returns 204, so pull the fresh channel to update source_ids.
       await onNeedsRefresh();
-      toast.success("Source unlinked");
+      toast.success("Готово: источник отвязан");
     } catch (err) {
       handleChannelError(err);
     } finally {
@@ -429,10 +429,10 @@ function ChannelSourcesSheet({
       <SheetContent side="right" className="w-full p-0 sm:w-[420px]">
         <div className="flex h-full flex-col">
           <div className="border-b border-white/[0.06] px-5 py-4">
-            <SheetTitle>Sources · {channel.name || channel.slug}</SheetTitle>
+            <SheetTitle>Источники · {channel.name || channel.slug}</SheetTitle>
             <SheetDescription>
-              Pick which parsing sources feed this channel. A source can feed
-              several channels.
+              Выберите, какие источники питают этот канал. Один источник может
+              питать несколько каналов.
             </SheetDescription>
           </div>
 
@@ -440,13 +440,13 @@ function ChannelSourcesSheet({
             <section className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] uppercase tracking-[0.18em] text-ink-400">
-                  Linked
+                  Привязаны
                 </span>
                 <Badge variant="outline">{linkedSources.length}</Badge>
               </div>
               {linkedSources.length === 0 ? (
                 <p className="rounded-lg border border-white/[0.05] bg-white/[0.015] px-3 py-2.5 text-[12px] text-ink-500">
-                  No sources linked yet — this channel has no input feed.
+                  Пока ничего не привязано — у канала нет входящих источников.
                 </p>
               ) : (
                 <div className="space-y-1.5">
@@ -466,13 +466,13 @@ function ChannelSourcesSheet({
             <section className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] uppercase tracking-[0.18em] text-ink-400">
-                  Available
+                  Доступны
                 </span>
                 <Badge variant="outline">{available.length}</Badge>
               </div>
               {available.length === 0 ? (
                 <p className="rounded-lg border border-white/[0.05] bg-white/[0.015] px-3 py-2.5 text-[12px] text-ink-500">
-                  Every source is already linked.
+                  Все источники уже привязаны.
                 </p>
               ) : (
                 <div className="space-y-1.5">
@@ -492,7 +492,7 @@ function ChannelSourcesSheet({
 
           <div className="flex items-center justify-end border-t border-white/[0.06] px-5 py-4">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>
-              <X className="h-4 w-4" /> Done
+              <X className="h-4 w-4" /> Готово
             </Button>
           </div>
         </div>
@@ -536,11 +536,11 @@ function SourceRow({
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
         ) : action === "detach" ? (
           <>
-            <Link2Off className="h-3.5 w-3.5" /> Remove
+            <Link2Off className="h-3.5 w-3.5" /> Убрать
           </>
         ) : (
           <>
-            <Plus className="h-3.5 w-3.5" /> Add
+            <Plus className="h-3.5 w-3.5" /> Добавить
           </>
         )}
       </Button>

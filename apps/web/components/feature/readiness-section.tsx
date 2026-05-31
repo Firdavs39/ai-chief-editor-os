@@ -62,6 +62,17 @@ function statusToBadge(status: string): "mint" | "cyan" | "violet" | "amber" | "
   return "outline";
 }
 
+const READINESS_STATUS_RU: Record<string, string> = {
+  valid: "работает",
+  mock: "демо",
+  configured: "настроено",
+  missing_config: "нет настроек",
+  disabled: "выключено",
+  invalid: "неверно",
+  error: "ошибка",
+  unavailable: "недоступно",
+};
+
 function ReadinessRow({ item }: { item: ReadinessItem }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
@@ -78,13 +89,13 @@ function ReadinessRow({ item }: { item: ReadinessItem }) {
     try {
       const result = await test();
       setLatest(result);
-      toast.success(`Tested ${latest.label}`, {
+      toast.success(`Проверено: ${latest.label}`, {
         description: result.message || result.status,
       });
       router.refresh();
     } catch {
-      toast.error("Test failed", {
-        description: "API недоступен — открой Settings локально или подключи бэкенд.",
+      toast.error("Ошибка проверки", {
+        description: "Сервер недоступен. Откройте Настройки локально или подключите бэкенд.",
       });
     } finally {
       setBusy(false);
@@ -114,7 +125,7 @@ function ReadinessRow({ item }: { item: ReadinessItem }) {
           <span className="text-sm font-medium text-ink-50">{latest.label}</span>
           <Badge variant={statusToBadge(latest.status)}>
             <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[latest.status])} />
-            {latest.status.replace("_", " ")}
+            {READINESS_STATUS_RU[latest.status] ?? latest.status.replace("_", " ")}
           </Badge>
         </div>
         {latest.message && (
@@ -150,11 +161,11 @@ function ReadinessRow({ item }: { item: ReadinessItem }) {
         >
           {busy ? (
             <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Testing…
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Проверяю…
             </>
           ) : (
             <>
-              <PlayCircle className="h-3.5 w-3.5" /> Test
+              <PlayCircle className="h-3.5 w-3.5" /> Проверить
             </>
           )}
         </Button>
@@ -198,6 +209,14 @@ function SafeDetails({ details }: { details: Record<string, unknown> }) {
   );
 }
 
+function pluralChecks(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "проверка";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "проверки";
+  return "проверок";
+}
+
 export function ReadinessSectionCard({ section }: { section: ReadinessSection }) {
   return (
     <Card className="p-4 sm:p-5 space-y-3">
@@ -206,7 +225,7 @@ export function ReadinessSectionCard({ section }: { section: ReadinessSection })
           {section.label}
         </div>
         <div className="text-[10px] text-ink-500">
-          {section.items.length} {section.items.length === 1 ? "item" : "items"}
+          {section.items.length} {pluralChecks(section.items.length)}
         </div>
       </div>
       <div className="space-y-2">

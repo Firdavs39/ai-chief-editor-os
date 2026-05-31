@@ -4,7 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { Toaster } from "sonner";
 import { PageShell, PageSection } from "@/components/layout/page-shell";
 import { Topbar } from "@/components/layout/topbar";
 import { Button } from "@/components/ui/button";
@@ -28,18 +27,17 @@ export default function RunPage() {
 
   return (
     <>
-      <Toaster theme="dark" position="top-right" />
       <Topbar
-        title="Quality Brief"
-        subtitle={`Run id: ${id || "—"}`}
+        title="Создание поста"
+        subtitle={`Задача №${id || "—"}`}
         pill={{
-          label: unlocked ? "unlocked" : "locked",
+          label: unlocked ? "разблокировано" : "заблокировано",
           tone: unlocked ? "violet" : "cyan",
         }}
         actions={
           <Button asChild variant="ghost" size="sm">
             <Link href="/editor">
-              <ArrowLeft className="h-4 w-4" /> К списку драфтов
+              <ArrowLeft className="h-4 w-4" /> К списку постов
             </Link>
           </Button>
         }
@@ -47,22 +45,22 @@ export default function RunPage() {
       <PageShell>
         {!unlocked ? (
           <PageSection
-            title="Operator unlock"
-            description="Token живёт только в памяти этой вкладки — refresh сотрёт его."
+            title="Разблокировать просмотр"
+            description="Токен хранится только в памяти этой вкладки — обновление страницы его сотрёт."
           >
             <OperatorUnlock
-              title="Operator unlock — Quality Brief viewer"
-              description="Чтобы посмотреть прогресс этого run, введи admin token. Он не пишется в localStorage, sessionStorage, cookies или URL."
+              title="Введите админ-токен"
+              description="Чтобы видеть прогресс создания поста, введите админ-токен (из .env, поле ADMIN_TOKEN). Он не сохраняется в браузере и не попадает в ссылку."
             />
           </PageSection>
         ) : id ? (
-          <PageSection title="Прогресс">
+          <PageSection title="Прогресс создания">
             <RunTimeline runId={id} />
           </PageSection>
         ) : (
-          <PageSection title="Run id отсутствует">
+          <PageSection title="Номер задачи не указан">
             <div className="text-[12px] text-ink-400">
-              URL не содержит run id — проверь ссылку.
+              В ссылке нет номера задачи — проверьте адрес.
             </div>
           </PageSection>
         )}

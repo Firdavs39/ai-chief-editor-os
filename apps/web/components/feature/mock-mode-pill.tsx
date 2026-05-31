@@ -14,8 +14,8 @@ export function MockModePill({ active = true }: { active?: boolean }) {
           <span className="relative h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-accent-cyan" />
         </span>
         <span className="text-[10px] sm:text-[11px] font-medium uppercase tracking-[0.18em] text-accent-cyan">
-          <span className="sm:hidden">Demo</span>
-          <span className="hidden sm:inline">Local Demo Mode</span>
+          <span className="sm:hidden">Демо</span>
+          <span className="hidden sm:inline">Демо-режим</span>
         </span>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Type, Save, Quote, Slash, Target, Languages } from "lucide-react";
+import { Type, Quote, Slash, Target, Languages } from "lucide-react";
 import { Topbar } from "@/components/layout/topbar";
 import { PageShell, PageSection } from "@/components/layout/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,17 @@ import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { VoiceRadar } from "@/components/feature/voice-radar";
 import { data } from "@/lib/data";
+
+const VOICE_SLIDER_RU: Record<string, string> = {
+  expert: "Экспертность",
+  playful: "Игривость",
+  contrarian: "Провокационность",
+  warm: "Теплота",
+  formal: "Формальность",
+  formality: "Формальность",
+  humor: "Юмор",
+  emotional: "Эмоциональность",
+};
 
 export default async function StyleDnaPage() {
   const style = await data.style();
@@ -19,14 +30,9 @@ export default async function StyleDnaPage() {
   return (
     <>
       <Topbar
-        title="Style DNA"
-        subtitle="Brand voice control panel — голос редакции и его границы"
+        title="Стиль (Style DNA)"
+        subtitle="Голос вашей редакции и его границы"
         pill={{ label: style.lang_primary.toUpperCase(), tone: "violet" }}
-        actions={
-          <Button size="sm">
-            <Save className="h-4 w-4" /> Save profile
-          </Button>
-        }
       />
       <PageShell>
         {/* Voice signature hero */}
@@ -35,19 +41,19 @@ export default async function StyleDnaPage() {
             <div className="space-y-3 min-w-0">
               <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-accent-violet/90">
                 <Type className="h-3.5 w-3.5" />
-                Voice signature
+                Фирменный голос
               </div>
               <h2 className="display text-[20px] sm:text-[24px] 3xl:text-[28px] font-semibold leading-tight tracking-tight text-ink-50">
-                <span className="text-ink-300">Tone:</span>{" "}
+                <span className="text-ink-300">Тон:</span>{" "}
                 {style.tone || "Экспертно, по-человечески, без воды."}
               </h2>
               <p className="text-sm text-ink-300 leading-relaxed">
-                <span className="text-ink-400">Audience —</span>{" "}
-                {style.audience || "Создатели контента и маркетологи 24-40."}
+                <span className="text-ink-400">Аудитория —</span>{" "}
+                {style.audience || "Создатели контента и маркетологи 24–40."}
               </p>
               <div className="flex flex-wrap gap-1.5 pt-1">
                 <Badge variant="cyan">
-                  <Languages className="h-3 w-3" /> primary: {style.lang_primary}
+                  <Languages className="h-3 w-3" /> основной язык: {style.lang_primary}
                 </Badge>
                 {style.target_topics.slice(0, 3).map((t) => (
                   <Badge key={t} variant="outline">
@@ -70,17 +76,17 @@ export default async function StyleDnaPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Type className="h-4 w-4 text-accent-violet" /> Tone & audience
+                  <Type className="h-4 w-4 text-accent-violet" /> Тон и аудитория
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Field label="Tone">
+                <Field label="Тон">
                   <Textarea defaultValue={style.tone} className="min-h-[88px]" />
                 </Field>
-                <Field label="Audience">
+                <Field label="Аудитория">
                   <Textarea defaultValue={style.audience} className="min-h-[72px]" />
                 </Field>
-                <Field label="Writing rules">
+                <Field label="Правила письма">
                   <Textarea defaultValue={style.writing_rules} className="min-h-[110px]" />
                 </Field>
               </CardContent>
@@ -89,7 +95,7 @@ export default async function StyleDnaPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Quote className="h-4 w-4 text-accent-cyan" /> Example posts
+                  <Quote className="h-4 w-4 text-accent-cyan" /> Примеры постов
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -104,12 +110,12 @@ export default async function StyleDnaPage() {
                     />
                     <blockquote className="italic">{p}</blockquote>
                     <figcaption className="mt-2 text-[10px] uppercase tracking-[0.18em] text-ink-500">
-                      example · {String(i + 1).padStart(2, "0")}
+                      пример · {String(i + 1).padStart(2, "0")}
                     </figcaption>
                   </figure>
                 ))}
                 <Button variant="outline" size="sm">
-                  + Add example
+                  + Добавить пример
                 </Button>
               </CardContent>
             </Card>
@@ -119,14 +125,14 @@ export default async function StyleDnaPage() {
             <Card tone="violet">
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Target className="h-4 w-4 text-accent-violet" /> Voice sliders
+                  <Target className="h-4 w-4 text-accent-violet" /> Настройки голоса
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {sliders.map((s) => (
                   <div key={s.key}>
                     <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-ink-400">
-                      <span>{s.key}</span>
+                      <span>{VOICE_SLIDER_RU[s.key] ?? s.key}</span>
                       <span className="num text-ink-100">{Math.round(s.value * 100)}</span>
                     </div>
                     <div className="score-bar mt-1.5">
@@ -140,7 +146,7 @@ export default async function StyleDnaPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Slash className="h-4 w-4 text-state-danger" /> Banned phrases
+                  <Slash className="h-4 w-4 text-state-danger" /> Запрещённые фразы
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -155,13 +161,13 @@ export default async function StyleDnaPage() {
                     </span>
                   ))}
                 </div>
-                <Input placeholder="Add a banned phrase…" />
+                <Input placeholder="Добавить запрещённую фразу…" />
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Target topics</CardTitle>
+                <CardTitle className="text-sm">Темы для постов</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-1.5">

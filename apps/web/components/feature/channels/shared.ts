@@ -13,9 +13,9 @@ import type { StyleProfile } from "@/lib/types";
 export const STYLE_NONE_VALUE = "__none__";
 
 export const LANG_OPTIONS: { value: string; label: string }[] = [
-  { value: "ru", label: "Russian (ru)" },
-  { value: "en", label: "English (en)" },
-  { value: "uz", label: "Uzbek (uz)" },
+  { value: "ru", label: "Русский (ru)" },
+  { value: "en", label: "Английский (en)" },
+  { value: "uz", label: "Узбекский (uz)" },
 ];
 
 // Native <select> styled to match the dark Input. Kept as a string so both
@@ -35,15 +35,15 @@ export function styleOptionsFrom(
   currentId?: string | null,
 ): StyleOption[] {
   const options: StyleOption[] = [
-    { value: STYLE_NONE_VALUE, label: "No style profile" },
+    { value: STYLE_NONE_VALUE, label: "Без стиля" },
   ];
   const seen = new Set<string>();
   if (profile?.id) {
-    options.push({ value: profile.id, label: `${profile.name || "default"} (default)` });
+    options.push({ value: profile.id, label: `${profile.name || "по умолчанию"} (по умолчанию)` });
     seen.add(profile.id);
   }
   if (currentId && !seen.has(currentId)) {
-    options.push({ value: currentId, label: `Profile ${currentId.slice(0, 8)}…` });
+    options.push({ value: currentId, label: `Профиль ${currentId.slice(0, 8)}…` });
   }
   return options;
 }
@@ -52,7 +52,7 @@ export function styleLabelFor(
   styleId: string | null,
   profile: StyleProfile | null,
 ): string {
-  if (!styleId) return "No style";
-  if (profile?.id && profile.id === styleId) return profile.name || "default";
+  if (!styleId) return "Без стиля";
+  if (profile?.id && profile.id === styleId) return profile.name || "по умолчанию";
   return `${styleId.slice(0, 8)}…`;
 }

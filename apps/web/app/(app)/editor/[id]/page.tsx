@@ -11,7 +11,6 @@ import {
   Type,
   XCircle,
 } from "lucide-react";
-import { Toaster } from "sonner";
 import { Topbar } from "@/components/layout/topbar";
 import { PageShell } from "@/components/layout/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +25,20 @@ import { CharMeter } from "@/components/feature/char-meter";
 import { DryRunButton } from "@/components/feature/dry-run-button";
 import { data } from "@/lib/data";
 import { cn, timeAgo } from "@/lib/utils";
+
+const STATUS_RU: Record<string, string> = {
+  draft: "черновик",
+  approved: "одобрено",
+  rejected: "отклонено",
+  revised: "доработано",
+  published: "опубликовано",
+};
+
+const SEVERITY_RU: Record<string, string> = {
+  high: "важно",
+  medium: "средне",
+  low: "мелочь",
+};
 
 export default async function EditorDetailPage({
   params,
@@ -46,24 +59,23 @@ export default async function EditorDetailPage({
 
   return (
     <>
-      <Toaster theme="dark" position="top-right" />
       <Topbar
-        title={candidate.topic || "Candidate"}
-        subtitle={`v${candidate.version} · ${timeAgo(candidate.created_at)}`}
+        title={candidate.topic || "Черновик поста"}
+        subtitle={`версия ${candidate.version} · ${timeAgo(candidate.created_at)}`}
         pill={{
-          label: candidate.status,
+          label: STATUS_RU[candidate.status] ?? candidate.status,
           tone:
             candidate.status === "approved" || candidate.status === "published" ? "cyan" : "violet",
         }}
         actions={
           <>
             <Button variant="outline" size="sm" asChild>
-              <Link href="/editor">Back</Link>
+              <Link href="/editor">← Назад</Link>
             </Button>
             <DryRunButton candidateId={candidate.id} />
             <Button variant="secondary" size="sm" asChild>
               <Link href={`/approvals?candidate=${candidate.id}`}>
-                <CheckCircle2 className="h-4 w-4" /> Board
+                <CheckCircle2 className="h-4 w-4" /> На доску →
               </Link>
             </Button>
           </>
@@ -75,27 +87,27 @@ export default async function EditorDetailPage({
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.18em] text-ink-500 mr-1">
               <Shield className="h-3 w-3" />
-              Publish readiness
+              Готовность к публикации
             </div>
             <PlatformReadiness label="Telegram" ready={tgReady} mock={status.mock_mode} />
-            <PlatformReadiness label="Threads via Postiz" ready={threadsReady} mock={status.mock_mode} />
-            <PlatformReadiness label="Reddit via Postiz" ready={redditReady} mock={status.mock_mode} />
+            <PlatformReadiness label="Threads (через Postiz)" ready={threadsReady} mock={status.mock_mode} />
+            <PlatformReadiness label="Reddit (через Postiz)" ready={redditReady} mock={status.mock_mode} />
             <div className="ml-auto flex flex-wrap items-center gap-1.5">
               {publishingOff && (
                 <Badge variant="amber">
                   <span className="h-1.5 w-1.5 rounded-full bg-accent-amber" />
-                  publishing disabled
+                  публикация выключена
                 </Badge>
               )}
               {dryRunOn && (
                 <Badge variant="cyan">
                   <span className="h-1.5 w-1.5 rounded-full bg-accent-cyan" />
-                  dry-run mode
+                  тестовый режим
                 </Badge>
               )}
               <Badge variant="violet">
                 <Shield className="h-3 w-3" />
-                approval required
+                нужно одобрение
               </Badge>
             </div>
           </div>
@@ -104,16 +116,16 @@ export default async function EditorDetailPage({
         {/* Score header strip — traffic-light scores visible at first glance */}
         <Card className="overflow-hidden p-3 sm:p-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <ScoreChip label="Style match" value={score(candidate.style_match_score)} tone="cyan" />
-            <ScoreChip label="Viral potential" value={score(candidate.viral_score)} tone="violet" />
+            <ScoreChip label="Совпадение со стилем" value={score(candidate.style_match_score)} tone="cyan" />
+            <ScoreChip label="Виральность" value={score(candidate.viral_score)} tone="violet" />
             <ScoreChip
-              label="AI-slop risk"
+              label="Риск ИИ-штампов"
               value={score(candidate.slop_risk)}
               tone="rose"
               invert
             />
             <ScoreChip
-              label="Controversy"
+              label="Риск спорности"
               value={score(candidate.controversy_risk)}
               tone="amber"
               invert
@@ -126,24 +138,24 @@ export default async function EditorDetailPage({
           <div className="space-y-3 sm:space-y-4 xl:order-1 order-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Source brief</CardTitle>
+                <CardTitle className="text-sm">О чём пост</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm leading-relaxed text-ink-200">
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.18em] text-ink-500">
-                    What we saw
+                    Что заметили
                   </div>
                   <p className="mt-1">{candidate.source_summary}</p>
                 </div>
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.18em] text-ink-500">
-                    Why it matters
+                    Почему это важно
                   </div>
                   <p className="mt-1">{candidate.why_it_matters}</p>
                 </div>
                 <div className="rounded-xl border border-accent-violet/20 bg-accent-violet/[0.06] p-3">
                   <div className="text-[10px] uppercase tracking-[0.18em] text-accent-violet/80">
-                    Psychology hook
+                    Психологический крючок
                   </div>
                   <p className="mt-1.5 text-[14px] italic text-ink-50 leading-snug">
                     «{candidate.psychology_hook}»
@@ -154,41 +166,41 @@ export default async function EditorDetailPage({
 
             <Card tone="violet">
               <CardHeader>
-                <CardTitle className="text-sm">Risk scores</CardTitle>
+                <CardTitle className="text-sm">Оценки</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <ScoreRow
-                  label="Style match"
+                  label="Стиль"
                   value={score(candidate.style_match_score)}
                   tone="cyan"
                 />
                 <ScoreRow
-                  label="Viral potential"
+                  label="Виральность"
                   value={score(candidate.viral_score)}
                   tone="violet"
                 />
-                <ScoreRow label="AI-slop risk" value={score(candidate.slop_risk)} tone="rose" />
+                <ScoreRow label="ИИ-штампы" value={score(candidate.slop_risk)} tone="rose" />
                 <ScoreRow
-                  label="Controversy"
+                  label="Спорность"
                   value={score(candidate.controversy_risk)}
                   tone="amber"
                 />
                 <Separator className="my-2" />
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] uppercase tracking-[0.18em] text-ink-500">
-                    AI recommends
+                    ИИ советует
                   </span>
                   {candidate.recommendation === "approve" && (
                     <Badge variant="mint">
-                      <CheckCircle2 className="h-3 w-3" /> Approve
+                      <CheckCircle2 className="h-3 w-3" /> Одобрить
                     </Badge>
                   )}
                   {candidate.recommendation === "revise" && (
-                    <Badge variant="amber">Revise</Badge>
+                    <Badge variant="amber">Доработать</Badge>
                   )}
                   {candidate.recommendation === "reject" && (
                     <Badge variant="rose">
-                      <XCircle className="h-3 w-3" /> Reject
+                      <XCircle className="h-3 w-3" /> Отклонить
                     </Badge>
                   )}
                 </div>
@@ -274,7 +286,7 @@ export default async function EditorDetailPage({
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-accent-violet" /> Call to action
+                  <Sparkles className="h-4 w-4 text-accent-violet" /> Призыв к действию
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-sm text-ink-100">
@@ -291,14 +303,14 @@ export default async function EditorDetailPage({
             <Card tone="cyan">
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-accent-amber" /> Critic notes
+                  <AlertTriangle className="h-4 w-4 text-accent-amber" /> Замечания критика
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 {candidate.critic_notes.length === 0 && (
                   <div className="flex items-center gap-2 rounded-lg border border-state-success/20 bg-state-success/[0.05] p-2.5 text-[13px] text-state-success">
                     <CheckCircle2 className="h-3.5 w-3.5" />
-                    Clean. No major issues — ready for approval.
+                    Чисто. Серьёзных проблем нет — можно одобрять.
                   </div>
                 )}
                 {candidate.critic_notes.map((n, i) => (
@@ -327,7 +339,7 @@ export default async function EditorDetailPage({
                             : "outline"
                         }
                       >
-                        {n.severity}
+                        {SEVERITY_RU[n.severity] ?? n.severity}
                       </Badge>
                     </div>
                     <p className="mt-1.5 text-xs leading-relaxed text-ink-200">{n.note}</p>
@@ -339,20 +351,20 @@ export default async function EditorDetailPage({
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-accent-cyan" /> Versions
+                  <Clock className="h-4 w-4 text-accent-cyan" /> Версии
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-1.5 text-xs text-ink-300">
                 <div className="flex items-center justify-between rounded-md bg-white/[0.02] px-2.5 py-1.5 ring-1 ring-accent-violet/20">
                   <span className="flex items-center gap-1.5">
                     <span className="dot-live" />
-                    v{candidate.version} · current
+                    версия {candidate.version} · текущая
                   </span>
                   <span className="text-ink-500">{timeAgo(candidate.created_at)}</span>
                 </div>
                 {candidate.version > 1 && (
                   <div className="flex items-center justify-between rounded-md bg-white/[0.02] px-2.5 py-1.5">
-                    <span>v{Math.max(1, candidate.version - 1)} · initial</span>
+                    <span>версия {Math.max(1, candidate.version - 1)} · первая</span>
                     <span className="text-ink-500">{timeAgo(candidate.created_at)}</span>
                   </div>
                 )}
@@ -386,7 +398,7 @@ function PlatformReadiness({
       ? "bg-accent-cyan"
       : "bg-state-success"
     : "bg-accent-amber";
-  const state = ready ? (mock ? "mock" : "ready") : "missing";
+  const state = ready ? (mock ? "демо" : "готово") : "не настроено";
   return (
     <Badge variant={variant}>
       <span className={cn("h-1.5 w-1.5 rounded-full", dotClass)} />
@@ -429,7 +441,7 @@ function ScoreChip({
         <div className="num display text-base font-semibold leading-none text-ink-50 mt-0.5">
           {value}
           <span className="text-[11px] text-ink-500 ml-0.5 font-normal">
-            {invert ? " risk" : ""}
+            {invert ? " риск" : ""}
           </span>
         </div>
       </div>

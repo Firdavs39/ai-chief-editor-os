@@ -17,7 +17,7 @@ import { useOperatorToken } from "@/lib/operator-auth";
  *   token value does not linger in the DOM.
  */
 export function OperatorUnlock({
-  title = "Operator unlock",
+  title = "Введите админ-токен",
   description,
   compact = false,
 }: {
@@ -40,14 +40,14 @@ export function OperatorUnlock({
   if (unlocked) {
     return (
       <div className="flex items-center gap-2 text-[12px] text-ink-300">
-        <Badge variant="violet">
-          <Unlock className="h-3 w-3" /> unlocked
+        <Badge variant="mint">
+          <Unlock className="h-3 w-3" /> разблокировано
         </Badge>
         <span className="text-ink-500">
-          {compact ? "" : "Admin token loaded in memory · refresh clears it"}
+          {compact ? "" : "Токен в памяти вкладки · обновление страницы его сотрёт"}
         </span>
         <Button variant="ghost" size="sm" onClick={() => lock()} className="ml-auto">
-          <Lock className="h-3.5 w-3.5" /> Lock
+          <Lock className="h-3.5 w-3.5" /> Заблокировать
         </Button>
         {/* Never render the token itself; just confirm presence. */}
         <span className="sr-only">token length {token.length}</span>
@@ -64,18 +64,18 @@ export function OperatorUnlock({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium text-ink-50">{title}</span>
-            <Badge variant="outline">
-              <Lock className="h-3 w-3" /> locked
+            <Badge variant="amber">
+              <Lock className="h-3 w-3" /> заблокировано
             </Badge>
           </div>
           <p className="mt-1 text-[12px] text-ink-300 leading-relaxed">
             {description ??
-              "Paste the operator token to start a Quality Brief run. The token stays in memory only — refresh clears it."}
+              "Введите админ-токен (из .env, поле ADMIN_TOKEN), чтобы создать пост. Токен хранится только в памяти вкладки — обновление страницы его сотрёт."}
           </p>
           <div className="mt-3 flex items-center gap-2">
             <div className="flex items-center gap-2 text-[11px] text-accent-amber">
               <ShieldAlert className="h-3 w-3" />
-              memory-only · no localStorage · no cookies · no URL
+              только в памяти · не в браузере · не в ссылке
             </div>
           </div>
           <div className="mt-3 flex gap-2">
@@ -84,7 +84,7 @@ export function OperatorUnlock({
               type="password"
               autoComplete="off"
               spellCheck={false}
-              placeholder="X-Admin-Token"
+              placeholder="Админ-токен (ADMIN_TOKEN из .env)"
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -92,7 +92,7 @@ export function OperatorUnlock({
                 }
               }}
             />
-            <Button onClick={tryUnlock}>Unlock</Button>
+            <Button onClick={tryUnlock}>Разблокировать</Button>
           </div>
         </div>
       </div>

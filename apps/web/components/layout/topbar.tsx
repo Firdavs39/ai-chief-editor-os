@@ -38,7 +38,7 @@ export function Topbar({ title, subtitle, actions, pill }: Props) {
           <div className="group flex h-9 w-[260px] 3xl:w-[340px] items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 text-ink-400 transition-colors hover:border-white/[0.12] hover:bg-white/[0.04]">
             <Search className="h-3.5 w-3.5" />
             <span className="flex-1 truncate text-[12px]">
-              Search trends, candidates, sources…
+              Поиск по трендам, постам, источникам…
             </span>
             <kbd className="hidden 2xl:inline-flex items-center gap-1 rounded border border-white/[0.10] bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-ink-300">
               <Command className="h-3 w-3" /> K
@@ -53,7 +53,7 @@ export function Topbar({ title, subtitle, actions, pill }: Props) {
               "hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.025] text-ink-300 transition-colors",
               "hover:text-ink-100 hover:bg-white/[0.05] hover:border-white/[0.12]",
             )}
-            aria-label="Notifications"
+            aria-label="Уведомления"
           >
             <Bell className="h-4 w-4" strokeWidth={1.8} />
           </button>
@@ -62,8 +62,8 @@ export function Topbar({ title, subtitle, actions, pill }: Props) {
               <Sparkles className="h-3.5 w-3.5 text-bg-base" strokeWidth={2.4} />
             </div>
             <div className="text-xs leading-tight">
-              <div className="font-medium text-ink-100">Local user</div>
-              <div className="text-[10px] text-ink-400">single-tenant</div>
+              <div className="font-medium text-ink-100">Владелец</div>
+              <div className="text-[10px] text-ink-400">личный кабинет</div>
             </div>
           </div>
           <div className="flex md:hidden h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-accent-violet to-accent-cyan shadow-glow">

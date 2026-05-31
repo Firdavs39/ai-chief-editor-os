@@ -38,7 +38,7 @@ export function SourceHealthCard({
     ? "bg-state-success"
     : "bg-accent-cyan";
 
-  const stateLabel = disabled ? "disabled" : !ok ? "error" : mode === "live" ? "live" : "mock";
+  const stateLabel = disabled ? "выключен" : !ok ? "ошибка" : mode === "live" ? "вживую" : "демо";
 
   return (
     <Card
@@ -75,23 +75,23 @@ export function SourceHealthCard({
         </div>
         <div className="mt-1 flex items-center gap-3 text-[10px] sm:text-[11px] text-ink-500 flex-wrap">
           <span className="num">
-            weight <span className="text-ink-300">{source.weight.toFixed(1)}</span>
+            вес <span className="text-ink-300">{source.weight.toFixed(1)}</span>
           </span>
-          <span>collected {timeAgo(source.last_collected_at)}</span>
+          <span>проверено {timeAgo(source.last_collected_at)}</span>
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <button
           type="button"
           className="hidden sm:flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.025] text-ink-300 transition-colors opacity-0 group-hover:opacity-100 hover:text-ink-100 hover:bg-white/[0.05] hover:border-white/[0.12]"
-          aria-label="Sync source"
-          title="Sync now (demo)"
+          aria-label="Обновить источник"
+          title="Обновить (демо)"
         >
           <RefreshCw className="h-3.5 w-3.5" />
         </button>
         <div className="text-right">
           <div className="text-[10px] sm:text-[11px] uppercase tracking-[0.18em] text-ink-500">
-            on
+            статус
           </div>
           <div
             className={
@@ -99,7 +99,7 @@ export function SourceHealthCard({
               (source.enabled ? "text-state-success" : "text-ink-400")
             }
           >
-            {source.enabled ? "ON" : "OFF"}
+            {source.enabled ? "ВКЛ" : "ВЫКЛ"}
           </div>
         </div>
       </div>

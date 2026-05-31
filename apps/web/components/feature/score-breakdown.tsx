@@ -13,13 +13,13 @@ export function ScoreBreakdown({
   className?: string;
 }) {
   const entries: Entry[] = [
-    { label: "Recency", value: data.recency ?? 0, tone: "cyan" },
-    { label: "Engagement", value: data.engagement ?? 0, tone: "violet" },
-    { label: "Source weight", value: data.source_weight ?? 0, tone: "neutral" },
-    { label: "Novelty", value: data.novelty ?? 0, tone: "cyan" },
-    { label: "Usefulness", value: data.usefulness ?? 0, tone: "violet" },
-    { label: "Style fit", value: data.style_fit ?? 0, tone: "violet" },
-    { label: "Controversy", value: data.controversy ?? 0, tone: "neutral" },
+    { label: "Свежесть", value: data.recency ?? 0, tone: "cyan" },
+    { label: "Вовлечение", value: data.engagement ?? 0, tone: "violet" },
+    { label: "Вес источника", value: data.source_weight ?? 0, tone: "neutral" },
+    { label: "Новизна", value: data.novelty ?? 0, tone: "cyan" },
+    { label: "Польза", value: data.usefulness ?? 0, tone: "violet" },
+    { label: "Совпадение со стилем", value: data.style_fit ?? 0, tone: "violet" },
+    { label: "Спорность", value: data.controversy ?? 0, tone: "neutral" },
   ];
 
   return (
@@ -47,7 +47,7 @@ export function ScoreBreakdown({
       {total !== undefined && (
         <div className="mt-3 flex items-center justify-between border-t border-white/[0.06] pt-3">
           <span className="text-[11px] uppercase tracking-[0.18em] text-ink-400">
-            Total score
+            Итоговый рейтинг
           </span>
           <span className="num text-base font-semibold text-ink-50">
             {Math.round(total * 100)}

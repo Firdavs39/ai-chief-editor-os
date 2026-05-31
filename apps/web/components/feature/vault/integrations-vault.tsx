@@ -37,13 +37,13 @@ export function IntegrationsVault() {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg === "admin_token_invalid" || msg === "admin_token_required") {
-          toast.error("Vault locked", {
-            description: "Admin token is missing or invalid.",
+          toast.error("Хранилище заблокировано", {
+            description: "Админ-токен не указан или неверный.",
           });
           setUnlocked(false);
           setAdminToken("");
         } else {
-          toast.error("Vault unavailable", { description: msg.slice(0, 200) });
+          toast.error("Хранилище недоступно", { description: msg.slice(0, 200) });
         }
       } finally {
         setLoading(false);
@@ -55,7 +55,9 @@ export function IntegrationsVault() {
   async function tryUnlock() {
     const t = tokenInput.current?.value?.trim() ?? "";
     if (!t) {
-      toast.error("Enter the admin token");
+      toast.error("Введите админ-токен", {
+        description: "Возьмите его из .env (поле ADMIN_TOKEN).",
+      });
       return;
     }
     await refresh(t);
@@ -93,26 +95,26 @@ export function IntegrationsVault() {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-ink-50">Integrations vault</span>
-            <Badge variant={unlocked ? "violet" : "outline"}>
+            <span className="text-sm font-medium text-ink-50">Хранилище ключей</span>
+            <Badge variant={unlocked ? "mint" : "outline"}>
               {unlocked ? <Unlock className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
-              {unlocked ? "unlocked" : "locked"}
+              {unlocked ? "разблокировано" : "заблокировано"}
             </Badge>
             {list && (
               <Badge variant={list.vault_enabled ? "mint" : "amber"}>
-                {list.vault_enabled ? "encrypted" : "disabled"}
+                {list.vault_enabled ? "шифруется" : "выключено"}
               </Badge>
             )}
           </div>
           <p className="mt-1 text-[12px] text-ink-300 leading-relaxed">
-            Add API keys without editing <code className="text-ink-100">.env</code>. Values are
-            encrypted at rest with Fernet (AES-128-CBC + HMAC-SHA256). Env vars still take
-            priority. The admin token lives only in this tab — reload clears it.
+            Добавляйте ключи API без правки файла <code className="text-ink-100">.env</code>.
+            Значения хранятся в зашифрованном виде. Значения из .env имеют приоритет.
+            Админ-токен живёт только в этой вкладке — обновление страницы его сотрёт.
           </p>
         </div>
         {unlocked && (
           <Button variant="ghost" size="sm" onClick={lockNow} className="shrink-0">
-            <Lock className="h-3.5 w-3.5" /> Lock
+            <Lock className="h-3.5 w-3.5" /> Заблокировать
           </Button>
         )}
       </div>
@@ -121,7 +123,7 @@ export function IntegrationsVault() {
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.015] p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-2 text-[12px] text-ink-200">
             <ShieldAlert className="h-3.5 w-3.5 text-accent-amber" />
-            Enter the admin token to view or change credentials.
+            Введите админ-токен, чтобы посмотреть или изменить ключи.
           </div>
           <div className="flex gap-2">
             <Input
@@ -129,7 +131,7 @@ export function IntegrationsVault() {
               type="password"
               autoComplete="off"
               spellCheck={false}
-              placeholder="X-Admin-Token (memory-only, refresh clears)"
+              placeholder="Админ-токен (только в памяти, обновление стирает)"
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -138,21 +140,21 @@ export function IntegrationsVault() {
               }}
             />
             <Button onClick={tryUnlock} disabled={loading}>
-              {loading ? "…" : "Unlock"}
+              {loading ? "…" : "Разблокировать"}
             </Button>
           </div>
           <p className="mt-2 text-[11px] text-ink-500">
-            Token is never written to localStorage, sessionStorage, cookies, or the URL. Set
-            <code className="ml-1 text-ink-200">ADMIN_TOKEN</code> on the API host.
+            Токен не сохраняется в браузере и не попадает в ссылку. Задайте
+            <code className="ml-1 text-ink-200">ADMIN_TOKEN</code> на сервере API.
           </p>
         </div>
       )}
 
       {unlocked && list && !list.vault_enabled && (
         <div className="rounded-xl border border-accent-amber/30 bg-accent-amber/10 p-3 text-[12px] text-accent-amber">
-          Vault disabled — saves and tests are blocked. Set
-          <code className="mx-1 font-mono">MASTER_ENCRYPTION_KEY</code> on the backend.
-          Generate one with{" "}
+          Хранилище выключено — сохранение и проверки заблокированы. Задайте
+          <code className="mx-1 font-mono">MASTER_ENCRYPTION_KEY</code> на бэкенде.
+          Сгенерировать ключ:{" "}
           <code className="font-mono">python -m chief_editor.services.secrets generate-key</code>.
         </div>
       )}

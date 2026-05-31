@@ -28,22 +28,22 @@ export type NavItem = {
 };
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Command Center", icon: LayoutDashboard, group: "primary" },
-  { href: "/trends", label: "Trend Radar", icon: Radio, group: "primary", hint: "live" },
-  { href: "/editor", label: "AI Editor", icon: Sparkles, group: "primary" },
-  { href: "/approvals", label: "Approvals", icon: CheckCircle2, group: "ops", hint: "3" },
-  { href: "/calendar", label: "Calendar", icon: Calendar, group: "ops" },
-  { href: "/channels", label: "Channels", icon: Megaphone, group: "ops" },
-  { href: "/sources", label: "Sources", icon: Compass, group: "ops" },
-  { href: "/style-dna", label: "Style DNA", icon: Type, group: "system" },
-  { href: "/analytics", label: "Analytics", icon: LineChart, group: "system" },
-  { href: "/settings", label: "Settings", icon: Settings, group: "system" },
+  { href: "/dashboard", label: "Главная", icon: LayoutDashboard, group: "primary" },
+  { href: "/trends", label: "Тренды", icon: Radio, group: "primary", hint: "live" },
+  { href: "/editor", label: "Редактор", icon: Sparkles, group: "primary" },
+  { href: "/approvals", label: "На одобрение", icon: CheckCircle2, group: "ops", hint: "3" },
+  { href: "/calendar", label: "Календарь", icon: Calendar, group: "ops" },
+  { href: "/channels", label: "Каналы", icon: Megaphone, group: "ops" },
+  { href: "/sources", label: "Источники", icon: Compass, group: "ops" },
+  { href: "/style-dna", label: "Стиль (Style DNA)", icon: Type, group: "system" },
+  { href: "/analytics", label: "Аналитика", icon: LineChart, group: "system" },
+  { href: "/settings", label: "Настройки", icon: Settings, group: "system" },
 ];
 
 const GROUP_LABEL: Record<NavItem["group"], string> = {
-  primary: "Workspace",
-  ops: "Operations",
-  system: "System",
+  primary: "Рабочее место",
+  ops: "Операции",
+  system: "Система",
 };
 
 export function NavBrand() {
@@ -127,12 +127,12 @@ export function NavFooter() {
       <div className="relative overflow-hidden rounded-xl border border-accent-cyan/20 bg-gradient-to-br from-accent-cyan/[0.08] to-transparent p-3 text-xs leading-relaxed text-ink-300">
         <div className="mb-1.5 flex items-center gap-2 text-ink-50">
           <span className="dot-live shrink-0" />
-          <span className="text-[11px] font-semibold tracking-tight">Demo Mode active</span>
+          <span className="text-[11px] font-semibold tracking-tight">Демо-режим включён</span>
         </div>
         <p className="text-[11px] leading-relaxed text-ink-400">
-          Внешние API не вызываются. Подключи ключи в{" "}
+          Внешние сервисы не вызываются. Подключите ключи в{" "}
           <Link href="/settings" className="text-accent-cyan hover:text-accent-cyan/80">
-            Settings
+            Настройках
           </Link>
           .
         </p>

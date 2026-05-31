@@ -1,12 +1,19 @@
 import * as React from "react";
 import { Megaphone } from "lucide-react";
-import { Toaster } from "sonner";
 import { Topbar } from "@/components/layout/topbar";
 import { PageShell } from "@/components/layout/page-shell";
 import { Card } from "@/components/ui/card";
 import { ChannelsManager } from "@/components/feature/channels/channels-manager";
 import { data } from "@/lib/data";
 import type { StyleProfile } from "@/lib/types";
+
+function pluralChannels(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "канал";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "канала";
+  return "каналов";
+}
 
 export default async function ChannelsPage() {
   // Open reads, server-side. Channels load from the live API; sources feed the
@@ -20,11 +27,10 @@ export default async function ChannelsPage() {
 
   return (
     <>
-      <Toaster theme="dark" position="top-right" />
       <Topbar
-        title="Channels"
-        subtitle="Outbound destinations — each with its own style and sources"
-        pill={{ label: `${channels.length} channels`, tone: "violet" }}
+        title="Каналы"
+        subtitle="Куда публикуем — у каждого канала свой стиль и свои источники"
+        pill={{ label: `${channels.length} ${pluralChannels(channels.length)}`, tone: "violet" }}
       />
       <PageShell>
         {/* Context banner — matches the dark-glass canon used elsewhere. */}
@@ -35,12 +41,13 @@ export default async function ChannelsPage() {
             </div>
             <div className="min-w-0 flex-1 text-sm text-ink-100">
               <div className="font-medium text-ink-50">
-                One deployment, many channels.
+                Один сервис — много каналов.
               </div>
               <div className="mt-0.5 text-xs leading-relaxed text-ink-300">
-                Each channel publishes to its own Telegram destination with its
-                own voice and source pool. Bot tokens stay in the vault — only a
-                public chat id lives here. Publishing always requires approval.
+                Каждый канал публикуется в свой Telegram со своим голосом и
+                набором источников. Токен бота хранится в защищённом хранилище —
+                здесь только публичный ID канала. Публикация всегда требует
+                одобрения.
               </div>
             </div>
           </div>

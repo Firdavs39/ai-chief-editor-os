@@ -74,8 +74,8 @@ export function ChannelsManager({
     } catch {
       // Keep the last good list; the page-level fallback already handles the
       // fully-offline case. Surface a soft hint only.
-      toast.error("Could not refresh channels", {
-        description: "Backend unreachable — showing the last loaded list.",
+      toast.error("Не удалось обновить список каналов", {
+        description: "Сервер недоступен — показываем последний загруженный список.",
       });
     } finally {
       setRefreshing(false);
@@ -100,17 +100,17 @@ export function ChannelsManager({
 
       {/* Summary stats. */}
       <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-4 3xl:gap-4">
-        <StatCard label="Channels" value={channels.length} />
-        <StatCard label="Enabled" value={enabledCount} tone="mint" />
-        <StatCard label="Source links" value={sourceLinks} />
-        <StatCard label="Sources pool" value={sources.length} />
+        <StatCard label="Каналов" value={channels.length} />
+        <StatCard label="Включено" value={enabledCount} tone="mint" />
+        <StatCard label="Связей с источниками" value={sourceLinks} />
+        <StatCard label="Источников всего" value={sources.length} />
       </div>
 
       {/* Toolbar. */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-ink-400">
           <Megaphone className="h-3.5 w-3.5 text-accent-violet" />
-          Outbound channels
+          Каналы публикации
           {refreshing && (
             <Loader2 className="h-3 w-3 animate-spin text-ink-500" />
           )}
@@ -119,9 +119,9 @@ export function ChannelsManager({
           size="sm"
           onClick={() => setCreateOpen(true)}
           disabled={!unlocked}
-          title={unlocked ? "Create a channel" : "Unlock with the admin token first"}
+          title={unlocked ? "Добавить канал" : "Сначала введите админ-токен"}
         >
-          <Plus className="h-4 w-4" /> Add channel
+          <Plus className="h-4 w-4" /> Добавить канал
         </Button>
       </div>
 
@@ -172,66 +172,72 @@ function UnlockBar({
   function tryUnlock() {
     const t = inputRef.current?.value?.trim() ?? "";
     if (!t) {
-      toast.error("Enter the admin token");
+      toast.error("Введите админ-токен", {
+        description: "Возьмите его из .env (поле ADMIN_TOKEN).",
+      });
       return;
     }
     unlock(t);
     if (inputRef.current) inputRef.current.value = "";
+    toast.success("Действия разблокированы", {
+      description: "Теперь можно создавать и править каналы.",
+    });
   }
 
   if (unlocked) {
     return (
       <Card tone="subtle" className="flex items-center gap-2.5 p-3 sm:p-3.5">
-        <div className="grid h-8 w-8 place-items-center rounded-lg bg-accent-violet/15 ring-1 ring-accent-violet/40 shrink-0">
-          <Unlock className="h-3.5 w-3.5 text-accent-violet" strokeWidth={2.2} />
+        <div className="grid h-8 w-8 place-items-center rounded-lg bg-state-success/15 ring-1 ring-state-success/40 shrink-0">
+          <Unlock className="h-3.5 w-3.5 text-state-success" strokeWidth={2.2} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-ink-50">Operator unlocked</span>
-            <Badge variant="violet">
-              <Unlock className="h-3 w-3" /> unlocked
+            <span className="text-sm font-medium text-ink-50">Действия разблокированы</span>
+            <Badge variant="mint">
+              <Unlock className="h-3 w-3" /> разблокировано
             </Badge>
           </div>
           <p className="mt-0.5 text-[11px] text-ink-500">
-            Admin token held in memory · refresh clears it · mutations are enabled
+            Токен в памяти вкладки · обновление страницы его сотрёт · правки доступны
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={onLock} className="shrink-0">
-          <Lock className="h-3.5 w-3.5" /> Lock
+          <Lock className="h-3.5 w-3.5" /> Заблокировать
         </Button>
       </Card>
     );
   }
 
   return (
-    <Card className="p-4 sm:p-5">
+    <Card tone="violet" className="p-4 sm:p-5">
       <div className="flex items-start gap-3">
         <div className="grid h-10 w-10 place-items-center rounded-xl bg-accent-violet/15 ring-1 ring-accent-violet/40 shrink-0">
           <KeyRound className="h-4 w-4 text-accent-violet" strokeWidth={2.2} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-ink-50">Operator unlock</span>
-            <Badge variant="outline">
-              <Lock className="h-3 w-3" /> locked
+            <span className="text-sm font-medium text-ink-50">Разблокировать действия</span>
+            <Badge variant="amber">
+              <Lock className="h-3 w-3" /> заблокировано
             </Badge>
           </div>
           <p className="mt-1 text-[12px] text-ink-300 leading-relaxed">
-            Viewing channels is open. Creating or editing a channel changes where
-            approved content publishes, so it needs the admin token. The token
-            stays in memory only — refresh clears it.
+            Просмотр каналов открыт всем. Создание и правка канала меняют, куда
+            уходят одобренные посты, поэтому требуют админ-токен (из .env, поле
+            ADMIN_TOKEN). Токен хранится только в памяти вкладки — обновление
+            страницы его сотрёт.
           </p>
           <div className="mt-2 flex items-center gap-2 text-[11px] text-accent-amber">
             <ShieldAlert className="h-3 w-3" />
-            memory-only · no localStorage · no cookies · no URL
+            только в памяти · не в браузере · не в ссылке
           </div>
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <Input
               ref={inputRef}
               type="password"
               autoComplete="off"
               spellCheck={false}
-              placeholder="X-Admin-Token"
+              placeholder="Админ-токен (ADMIN_TOKEN из .env)"
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -239,7 +245,9 @@ function UnlockBar({
                 }
               }}
             />
-            <Button onClick={tryUnlock}>Unlock</Button>
+            <Button onClick={tryUnlock} className="shrink-0">
+              <Unlock className="h-4 w-4" /> Разблокировать
+            </Button>
           </div>
         </div>
       </div>
@@ -290,18 +298,18 @@ function EmptyChannels({
         <Megaphone className="h-5 w-5 text-accent-violet" strokeWidth={2} />
       </div>
       <div className="space-y-1">
-        <div className="text-sm font-medium text-ink-50">No channels yet</div>
+        <div className="text-sm font-medium text-ink-50">Каналов пока нет</div>
         <p className="mx-auto max-w-sm text-[12px] leading-relaxed text-ink-400">
-          A channel is one outbound destination (e.g. a Telegram channel) with
-          its own style and its own pool of sources. The backend may still be
-          starting — channels load from the live API.
+          Канал — это одно место для публикации (например, Telegram-канал) со
+          своим стилем и своим набором источников. Если список пуст — возможно,
+          сервер ещё запускается.
         </p>
       </div>
       <Button onClick={onCreate} disabled={!unlocked} size="sm">
-        <Plus className="h-4 w-4" /> Add your first channel
+        <Plus className="h-4 w-4" /> Добавить первый канал
       </Button>
       {!unlocked && (
-        <p className="text-[11px] text-ink-500">Unlock with the admin token to create one.</p>
+        <p className="text-[11px] text-ink-500">Сначала введите админ-токен, чтобы создать канал.</p>
       )}
     </Card>
   );
@@ -343,7 +351,7 @@ function CreateChannelSheet({
   async function submit() {
     const trimmed = name.trim();
     if (!trimmed) {
-      toast.error("Channel name is required");
+      toast.error("Укажите название канала");
       return;
     }
     const body: ChannelCreate = {
@@ -355,7 +363,7 @@ function CreateChannelSheet({
     setSaving(true);
     try {
       const created = await channelsApi.create(body, getAdminToken());
-      toast.success("Channel created", { description: created.name });
+      toast.success("Готово: канал создан", { description: created.name });
       onOpenChange(false);
       await onCreated();
     } catch (err) {
@@ -370,36 +378,36 @@ function CreateChannelSheet({
       <SheetContent side="right" className="w-full p-0 sm:w-[420px]">
         <div className="flex h-full flex-col">
           <div className="border-b border-white/[0.06] px-5 py-4">
-            <SheetTitle>New channel</SheetTitle>
+            <SheetTitle>Новый канал</SheetTitle>
             <SheetDescription>
-              One outbound destination with its own style and sources.
+              Одно место для публикации со своим стилем и источниками.
             </SheetDescription>
           </div>
 
           <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-            <Field label="Name" hint="Shown in the dashboard. The slug is auto-derived.">
+            <Field label="Название" hint="Видно в дашборде. Короткий адрес создаётся автоматически.">
               <Input
                 value={name}
                 autoFocus
                 onChange={(e) => setName(e.target.value)}
-                placeholder="BUAI · main feed"
+                placeholder="BUAI · основной канал"
               />
             </Field>
 
             <Field
-              label="Target chat id"
-              hint="Public channel @username or numeric chat id. Never a bot token."
+              label="ID канала в Telegram"
+              hint="Публичный @username или числовой ID канала. Не токен бота."
             >
               <Input
                 value={targetChatId}
                 onChange={(e) => setTargetChatId(e.target.value)}
-                placeholder="@buai_uz or -1001234567890"
+                placeholder="@buai_uz или -1001234567890"
                 className="font-mono"
               />
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Language">
+              <Field label="Язык">
                 <select
                   value={lang}
                   onChange={(e) => setLang(e.target.value)}
@@ -412,7 +420,7 @@ function CreateChannelSheet({
                   ))}
                 </select>
               </Field>
-              <Field label="Style profile">
+              <Field label="Стиль">
                 <select
                   value={styleId}
                   onChange={(e) => setStyleId(e.target.value)}
@@ -428,24 +436,24 @@ function CreateChannelSheet({
             </div>
 
             <div className="rounded-xl border border-accent-cyan/20 bg-accent-cyan/[0.06] p-3 text-[11px] leading-relaxed text-ink-300">
-              The bot token is not set here. It lives in the Integration Secrets
-              Vault and is resolved at publish time via the channel&apos;s bot
-              provider. Publishing still requires manual approval.
+              Токен бота здесь не указывается. Он хранится в защищённом хранилище
+              ключей и подставляется при публикации. Публикация всё равно требует
+              ручного одобрения.
             </div>
           </div>
 
           <div className="flex items-center justify-end gap-2 border-t border-white/[0.06] px-5 py-4">
             <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
-              <X className="h-4 w-4" /> Cancel
+              <X className="h-4 w-4" /> Отмена
             </Button>
             <Button onClick={submit} disabled={saving}>
               {saving ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Creating…
+                  <Loader2 className="h-4 w-4 animate-spin" /> Создаю…
                 </>
               ) : (
                 <>
-                  <Plus className="h-4 w-4" /> Create channel
+                  <Plus className="h-4 w-4" /> Создать канал
                 </>
               )}
             </Button>
@@ -481,34 +489,34 @@ function Field({
 export function handleChannelError(err: unknown) {
   const e = err as ChannelApiError;
   if (e?.code === "admin_token_required") {
-    toast.error("Admin token required", {
-      description: "Unlock with the operator token before making changes.",
+    toast.error("Сначала введите админ-токен", {
+      description: "Разблокируйте действия токеном (ADMIN_TOKEN из .env), прежде чем менять каналы.",
     });
     return;
   }
   if (e?.code === "admin_token_invalid") {
-    toast.error("Admin token rejected", {
-      description: "The token was refused (401). Re-enter a valid admin token.",
+    toast.error("Токен не подошёл", {
+      description: "Сервер отклонил токен. Введите правильный админ-токен (ADMIN_TOKEN из .env).",
     });
     return;
   }
   if (e?.code === "conflict") {
     const map: Record<string, string> = {
       default_channel_cannot_be_disabled:
-        "The default channel can't be disabled — it's the fallback destination.",
+        "Основной канал нельзя выключить — это запасной канал по умолчанию.",
       channel_slug_taken:
-        "A channel with this slug already exists. Pick a different name.",
+        "Канал с таким адресом уже есть. Выберите другое название.",
     };
-    toast.error("Conflict", {
-      description: map[e.detail ?? ""] ?? e.detail ?? "Request conflicts with current state.",
+    toast.error("Конфликт", {
+      description: map[e.detail ?? ""] ?? e.detail ?? "Действие конфликтует с текущим состоянием.",
     });
     return;
   }
   if (e?.code === "not_found") {
-    toast.error("Not found", { description: "The channel or source no longer exists." });
+    toast.error("Не найдено", { description: "Канал или источник больше не существует." });
     return;
   }
-  toast.error("Request failed", {
+  toast.error("Ошибка запроса", {
     description: (e instanceof Error ? e.message : String(err)).slice(0, 200),
   });
 }

@@ -7,12 +7,21 @@ import { Badge } from "@/components/ui/badge";
 import { cn, timeAgo } from "@/lib/utils";
 
 const STATUS_STYLES: Record<Candidate["status"], { label: string; badge: "violet" | "cyan" | "amber" | "mint" | "rose" }> = {
-  draft: { label: "Draft", badge: "amber" },
-  approved: { label: "Approved", badge: "mint" },
-  rejected: { label: "Rejected", badge: "rose" },
-  revised: { label: "Revised", badge: "cyan" },
-  published: { label: "Published", badge: "violet" },
+  draft: { label: "Черновик", badge: "amber" },
+  approved: { label: "Одобрено", badge: "mint" },
+  rejected: { label: "Отклонено", badge: "rose" },
+  revised: { label: "Доработано", badge: "cyan" },
+  published: { label: "Опубликовано", badge: "violet" },
 };
+
+// Простое русское склонение для "замечание / замечания / замечаний".
+function pluralNotes(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "замечание";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "замечания";
+  return "замечаний";
+}
 
 export function CandidateCard({
   candidate,
@@ -37,17 +46,17 @@ export function CandidateCard({
         <Badge variant="outline">v{candidate.version}</Badge>
         {recommend === "approve" && (
           <Badge variant="mint" className="hidden sm:inline-flex">
-            <CheckCircle2 className="h-3 w-3" /> AI: approve
+            <CheckCircle2 className="h-3 w-3" /> ИИ: одобрить
           </Badge>
         )}
         {recommend === "revise" && (
           <Badge variant="amber" className="hidden sm:inline-flex">
-            <RefreshCcw className="h-3 w-3" /> AI: revise
+            <RefreshCcw className="h-3 w-3" /> ИИ: доработать
           </Badge>
         )}
         {recommend === "reject" && (
           <Badge variant="rose" className="hidden sm:inline-flex">
-            <XCircle className="h-3 w-3" /> AI: reject
+            <XCircle className="h-3 w-3" /> ИИ: отклонить
           </Badge>
         )}
         <span className="ml-auto text-[10px] text-ink-500">{timeAgo(candidate.created_at)}</span>
@@ -68,9 +77,9 @@ export function CandidateCard({
       </p>
 
       <div className="mt-3 sm:mt-4 grid grid-cols-3 gap-2 sm:gap-3 text-[10px] uppercase tracking-[0.15em] text-ink-500">
-        <Metric label="Viral" value={viral} tone="violet" />
-        <Metric label="Style fit" value={styleFit} tone="cyan" />
-        <Metric label="Slop risk" value={slop} tone="rose" inverse />
+        <Metric label="Виральность" value={viral} tone="violet" />
+        <Metric label="Стиль" value={styleFit} tone="cyan" />
+        <Metric label="ИИ-штампы" value={slop} tone="rose" inverse />
       </div>
 
       {candidate.critic_notes.length > 0 && (
@@ -78,7 +87,7 @@ export function CandidateCard({
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-amber" />
           <div className="text-[11px] sm:text-xs leading-relaxed text-ink-200">
             <span className="font-medium text-accent-amber">{candidate.critic_notes.length}</span>{" "}
-            note{candidate.critic_notes.length === 1 ? "" : "s"}:{" "}
+            {pluralNotes(candidate.critic_notes.length)}:{" "}
             <span className="text-ink-300">{candidate.critic_notes[0].note}</span>
           </div>
         </div>
@@ -90,13 +99,13 @@ export function CandidateCard({
           className="link inline-flex items-center gap-1.5 text-xs font-medium text-accent-cyan"
         >
           <Sparkles className="h-3 w-3" />
-          Open in editor
+          Открыть и редактировать
         </Link>
         <Link
           href={`/approvals?candidate=${candidate.id}`}
           className="inline-flex items-center gap-1 text-xs text-ink-300 hover:text-ink-50"
         >
-          Review <ArrowUpRight className="h-3 w-3" />
+          На доску <ArrowUpRight className="h-3 w-3" />
         </Link>
       </div>
     </Card>
@@ -127,7 +136,7 @@ function Metric({
       </div>
       <div className={cn("num mt-0.5 text-sm font-semibold", colorClass)}>
         {value}
-        <span className="text-[10px] text-ink-500 ml-0.5">{inverse ? " risk" : ""}</span>
+        <span className="text-[10px] text-ink-500 ml-0.5">{inverse ? " риск" : ""}</span>
       </div>
     </div>
   );

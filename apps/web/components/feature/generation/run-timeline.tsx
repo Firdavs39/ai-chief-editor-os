@@ -29,6 +29,19 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ArtifactCard } from "./artifact-card";
+import { GenerateBriefButton } from "./generate-brief-button";
+
+/**
+ * Кнопка "Создать заново" для упавшей/остановленной задачи.
+ *
+ * Безопасность (по требованию): повтор НЕ публикует ничего автоматически — он
+ * лишь ставит в очередь новую задачу генерации. Полученный пост всё равно
+ * требует ручного одобрения. Поэтому переиспользуем GenerateBriefButton как
+ * есть (он создаёт run и переходит на его прогресс).
+ */
+function RetryButton({ clusterId }: { clusterId: string | null }) {
+  return <GenerateBriefButton clusterId={clusterId} label="Создать заново" size="sm" />;
+}
 
 /**
  * Polling timeline for a single GenerationRun.
@@ -54,14 +67,14 @@ const STEP_LABELS_RU: Record<string, string> = {
   research_analyst: "Исследование источников",
   trend_strategist: "Стратегический угол",
   audience_psychology_analyst: "Психология аудитории",
-  platform_writer_telegram: "Telegram Writer",
-  platform_writer_threads: "Threads Writer",
-  platform_writer_reddit: "Reddit Writer",
-  critic_red_team: "Критик / Red Team",
-  editor_in_chief_draft: "Главный редактор",
-  fact_checker: "Фактчек",
-  quality_judge: "Quality Judge",
-  finalizer: "Финализация",
+  platform_writer_telegram: "Текст для Telegram",
+  platform_writer_threads: "Текст для Threads",
+  platform_writer_reddit: "Текст для Reddit",
+  critic_red_team: "Критика и проверка на слабые места",
+  editor_in_chief_draft: "Работа главного редактора",
+  fact_checker: "Проверка фактов",
+  quality_judge: "Оценка качества",
+  finalizer: "Финальная сборка",
 };
 
 const RUN_STATUS_LABEL_RU: Record<GenerationRunStatus, string> = {
@@ -171,16 +184,18 @@ export function RunTimeline({
 
   async function handleCancel() {
     if (!run || !token) return;
-    const sure = window.confirm("Cancel this run? In-flight steps stop before the next LLM call.");
+    const sure = window.confirm(
+      "Остановить создание поста? Текущий шаг завершится, дальше работа не пойдёт.",
+    );
     if (!sure) return;
     setCancelling(true);
     try {
       await runsApi.cancel(run.id, token);
-      toast.success("Cancel requested");
+      toast.success("Запрос на остановку отправлен");
       await refresh();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error("Cancel failed", { description: msg.slice(0, 200) });
+      toast.error("Не удалось остановить", { description: msg.slice(0, 200) });
     } finally {
       setCancelling(false);
     }
@@ -190,7 +205,7 @@ export function RunTimeline({
     return (
       <Card className="p-4 sm:p-5">
         <div className="text-sm text-ink-200">
-          Operator unlock required to view this run.
+          Чтобы видеть эту задачу, введите админ-токен.
         </div>
       </Card>
     );
@@ -233,43 +248,52 @@ export function RunTimeline({
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-medium text-ink-50">Quality Brief</span>
+              <span className="text-sm font-medium text-ink-50">Создание поста</span>
               <Badge variant={runBadgeVariant(run.status)}>
                 {RUN_STATUS_LABEL_RU[run.status]}
               </Badge>
               {run.provider && (
                 <Badge variant="outline">
-                  provider · {run.provider}
+                  модель · {run.provider}
                   {run.model ? ` / ${run.model}` : ""}
                 </Badge>
               )}
               <Badge variant="outline">
-                <Clock className="h-3 w-3" /> {progressLabel}
+                <Clock className="h-3 w-3" /> шаг {progressLabel}
               </Badge>
             </div>
             {run.current_step && (
               <div className="mt-1 text-[12px] text-ink-300">
-                Current step:{" "}
+                Сейчас:{" "}
                 <span className="text-ink-100">
                   {STEP_LABELS_RU[run.current_step] ?? run.current_step}
                 </span>
               </div>
             )}
+            {!isTerminal && (
+              <div className="mt-1.5 text-[11px] text-ink-500 leading-relaxed">
+                Создание занимает ~15–40 минут. Вкладку можно закрыть — прогресс
+                не потеряется, готовый пост появится в разделе Редактор.
+              </div>
+            )}
             {run.status === "failed" && (
               <div className="mt-2 rounded-xl border border-state-danger/30 bg-state-danger/10 p-2.5 text-[12px] text-state-danger">
                 <div className="font-medium">
-                  {run.error_class || "Ошибка"}
+                  Ошибка{run.error_class ? `: ${run.error_class}` : ""}
                 </div>
                 {run.error_message && (
                   <div className="mt-0.5 text-ink-200 whitespace-pre-wrap break-words">
                     {run.error_message}
                   </div>
                 )}
+                <div className="mt-1.5 text-ink-300">
+                  Можно попробовать создать пост заново — кнопка ниже.
+                </div>
               </div>
             )}
             {run.status === "cancelled" && (
               <div className="mt-2 rounded-xl border border-accent-amber/30 bg-accent-amber/10 p-2.5 text-[12px] text-accent-amber">
-                Run cancelled by operator.
+                Создание остановлено вручную.
               </div>
             )}
           </div>
@@ -281,12 +305,15 @@ export function RunTimeline({
                 onClick={handleCancel}
                 disabled={cancelling}
               >
-                {cancelling ? "…" : "Cancel run"}
+                {cancelling ? "…" : "Остановить"}
               </Button>
+            )}
+            {(run.status === "failed" || run.status === "cancelled") && (
+              <RetryButton clusterId={run.cluster_id ?? null} />
             )}
             {candidateHref && (
               <Button asChild variant="cyan" size="sm">
-                <Link href={candidateHref}>Открыть финальный draft</Link>
+                <Link href={candidateHref}>Открыть готовый пост →</Link>
               </Button>
             )}
           </div>
@@ -295,7 +322,7 @@ export function RunTimeline({
 
       <Card className="p-4 sm:p-5">
         <div className="text-[11px] uppercase tracking-[0.18em] text-ink-400 mb-2">
-          Timeline
+          Шаги
         </div>
         <div className="space-y-2">
           {Array.from({ length: run.total_steps }).map((_, idx) => {

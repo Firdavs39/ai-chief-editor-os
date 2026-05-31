@@ -29,14 +29,14 @@ export function TrendCard({ trend, rank }: { trend: Trend; rank?: number }) {
             <Badge variant={isHot ? "violet" : "outline"}>
               {isHot ? (
                 <>
-                  <Flame className="h-3 w-3" /> Hot
+                  <Flame className="h-3 w-3" /> Горячее
                 </>
               ) : (
                 <>{trend.category.toUpperCase()}</>
               )}
             </Badge>
             <Badge variant="outline" className="hidden xs:inline-flex sm:inline-flex">
-              {trend.signal_count} signals
+              {trend.signal_count} сигналов
             </Badge>
           </div>
 
@@ -48,7 +48,7 @@ export function TrendCard({ trend, rank }: { trend: Trend; rank?: number }) {
           </Link>
         </div>
         <div className="shrink-0">
-          <RadialScore value={trend.total_score} size={56} label="score" />
+          <RadialScore value={trend.total_score} size={56} label="рейтинг" />
         </div>
       </div>
 
@@ -82,17 +82,17 @@ export function TrendCard({ trend, rank }: { trend: Trend; rank?: number }) {
 
       <div className="mt-3 sm:mt-4 flex items-center justify-between gap-3 border-t border-white/[0.05] pt-2.5 sm:pt-3">
         <Link
-          href={`/editor?cluster=${trend.id}`}
+          href={`/trends?focus=${trend.id}`}
           className="link inline-flex items-center gap-1.5 text-xs font-medium text-accent-cyan"
         >
           <Sparkles className="h-3 w-3" />
-          Generate brief
+          Разобрать тему
         </Link>
         <Link
           href={`/trends?focus=${trend.id}`}
           className="inline-flex items-center gap-1 text-xs text-ink-300 transition-colors hover:text-ink-50"
         >
-          Open <ArrowUpRight className="h-3 w-3" />
+          Открыть <ArrowUpRight className="h-3 w-3" />
         </Link>
       </div>
     </Card>
