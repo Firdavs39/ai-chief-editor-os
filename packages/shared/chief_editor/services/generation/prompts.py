@@ -742,7 +742,22 @@ def user_critic_red_team(artifacts: dict) -> str:
     )
 
 
-def user_editor_in_chief_draft(artifacts: dict) -> str:
+def user_editor_in_chief_draft(
+    artifacts: dict, *, target_platforms: set[str] | None = None
+) -> str:
+    """Assemble-the-final-brief prompt for the Editor-in-Chief.
+
+    Platform-scoped generation: the editor is shown ONLY the drafts that were
+    actually written and is asked to fill ONLY the `final_*` fields for those
+    platforms. When `target_platforms` is None (legacy / unscoped run) every
+    platform with a non-empty draft is assembled — the prior behaviour.
+
+    A platform whose writer was skipped arrives here as an empty placeholder
+    artifact; we drop it from the prompt entirely so the editor is never told
+    to assemble a Threads/Reddit post for a Telegram-only channel. Its
+    `final_*` field is simply left at its schema default ("") which the
+    finalizer maps to an empty platform version.
+    """
     rb = artifacts.get("research_brief", {})
     angle = artifacts.get("angle", {})
     psych = artifacts.get("psych", {})
@@ -750,27 +765,62 @@ def user_editor_in_chief_draft(artifacts: dict) -> str:
     th = artifacts.get("threads_post", {})
     rd = artifacts.get("reddit_post", {})
     critic = artifacts.get("critic_report", {})
-    return (
-        _role_reanchor("главный редактор (Editor-in-Chief)")
-        + wrap_input("research_brief", rb)
-        + "\n"
-        + wrap_input("angle", angle)
-        + "\n"
-        + wrap_input("psych", psych)
-        + "\n"
-        + wrap_input("telegram_draft", tg)
-        + "\n"
-        + wrap_input("threads_draft", th)
-        + "\n"
-        + wrap_input("reddit_draft", rd)
-        + "\n"
-        + wrap_input("critic_report", critic)
-        + "\n\nСобери final_brief: topic, source_summary (≤2000), "
-        "why_it_matters (≤1500), psychology_hook (≤1500), final_tg (≤4096, "
-        "цель 600–1500), final_threads (≤500), final_reddit (≤10000, цель "
-        "800–3000), cta. Учти замечания критика. editorial_rationale ≤ 1500. "
-        + SAFETY_FOOTER
+
+    # A platform is "active" when it's in the target set (if scoping is on)
+    # AND its draft carries real content. With no target set, presence of a
+    # non-empty draft alone decides — preserving the legacy all-platform flow.
+    def _active(platform: str, draft: dict) -> bool:
+        if target_platforms is not None and platform not in target_platforms:
+            return False
+        return bool(str(draft.get("body", "")).strip() or str(draft.get("title", "")).strip())
+
+    tg_on = _active("telegram", tg)
+    th_on = _active("threads", th)
+    rd_on = _active("reddit", rd)
+
+    parts = [
+        _role_reanchor("главный редактор (Editor-in-Chief)"),
+        wrap_input("research_brief", rb),
+        "\n",
+        wrap_input("angle", angle),
+        "\n",
+        wrap_input("psych", psych),
+    ]
+    final_fields: list[str] = []
+    if tg_on:
+        parts += ["\n", wrap_input("telegram_draft", tg)]
+        final_fields.append("final_tg (≤4096, цель 600–1500)")
+    if th_on:
+        parts += ["\n", wrap_input("threads_draft", th)]
+        final_fields.append("final_threads (≤500)")
+    if rd_on:
+        parts += ["\n", wrap_input("reddit_draft", rd)]
+        final_fields.append("final_reddit (≤10000, цель 800–3000)")
+    parts += ["\n", wrap_input("critic_report", critic)]
+
+    # Always-required platforms left out of `final_fields` must still be
+    # returned (the schema requires all three keys) but as empty strings.
+    skipped = [
+        ("final_tg", tg_on),
+        ("final_threads", th_on),
+        ("final_reddit", rd_on),
+    ]
+    empty_note = ", ".join(name for name, on in skipped if not on)
+    fields_text = ", ".join(final_fields) if final_fields else "—"
+    empty_clause = (
+        f" Поля {empty_note} верни пустой строкой — для этого канала они не "
+        "генерируются."
+        if empty_note
+        else ""
     )
+
+    parts.append(
+        "\n\nСобери final_brief: topic, source_summary (≤2000), "
+        "why_it_matters (≤1500), psychology_hook (≤1500), "
+        f"{fields_text}, cta.{empty_clause} Учти замечания критика. "
+        "editorial_rationale ≤ 1500. " + SAFETY_FOOTER
+    )
+    return "".join(parts)
 
 
 def user_fact_checker(artifacts: dict) -> str:

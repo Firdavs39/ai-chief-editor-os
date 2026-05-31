@@ -53,7 +53,7 @@ from . import prompts
 from .artifacts import get_run_artifacts_by_name, validate_payload
 from .finalizer import finalize_candidate
 from .provider_capabilities import options_for_step
-from .steps import STEP_SEQUENCE, StepDef
+from .steps import STEP_SEQUENCE, WRITER_PLATFORMS, StepDef
 
 log = logging.getLogger("chief_editor.generation.workflow")
 
@@ -156,6 +156,49 @@ def _load_raw_items(
     return list(session.exec(stmt.limit(limit)).all())
 
 
+def _target_platforms(session: Session, run: GenerationRun) -> set[str] | None:
+    """Outbound platforms this run should write for, or None for "all writers".
+
+    Platform-scoped generation: a channel writes content ONLY for its own
+    platform. A Telegram channel (`Channel.platform == "telegram"`) yields
+    ``{"telegram"}`` and the workflow SKIPS the Threads/Reddit writer steps
+    (no LLM call) — they are a pure cost + failure surface for a platform the
+    channel never publishes to.
+
+    Returns None (→ run every writer, the legacy behaviour) when EITHER:
+    - the run has no resolvable channel (legacy `channel_id` NULL with no
+      default channel), OR
+    - the resolved channel's `platform` is not one of the recognized writer
+      platforms (an unknown/future value we have no dedicated writer for).
+
+    `Channel.platform` is a single value today; this returns a SET so the
+    same call site keeps working if a channel later declares several
+    platforms. The step COUNT is never affected — skipping is in-place.
+    """
+    channel = _resolve_channel(session, run)
+    if channel is None:
+        return None
+    platform = (channel.platform or "").strip().lower()
+    if platform not in WRITER_PLATFORMS:
+        # Unrecognized / unset platform → no scoping, run all writers.
+        return None
+    return {platform}
+
+
+def _empty_artifact_payload(artifact_name: str) -> dict[str, Any]:
+    """Schema-valid placeholder payload for a skipped writer step.
+
+    A skipped writer still persists ONE artifact (so artifact counts and the
+    downstream `artifacts.get(name, {})` lookups stay stable), but the payload
+    is the artifact model's own defaults — every string empty, every list
+    empty. This is validated through the same `validate_payload` path as a
+    real step, so it satisfies the "payload keys are a subset of schema
+    fields" persistence contract. It carries NO model output (there was no
+    LLM call) and NO out-of-schema marker keys.
+    """
+    return validate_payload(artifact_name, {})
+
+
 def _model_name_for(provider_name: str) -> str:
     s = get_settings()
     if provider_name == "anthropic":
@@ -195,6 +238,7 @@ def _build_user_prompt(
     raw_items: list[RawItem],
     artifacts: dict[str, dict],
     style: StyleProfile | None,
+    target_platforms: set[str] | None = None,
 ) -> str:
     builder = step_def.user_builder_name
     if builder == "research_analyst":
@@ -212,7 +256,11 @@ def _build_user_prompt(
     if builder == "critic_red_team":
         return prompts.user_critic_red_team(artifacts)
     if builder == "editor_in_chief_draft":
-        return prompts.user_editor_in_chief_draft(artifacts)
+        # The editor only assembles the platforms the channel targets; skipped
+        # writers' empty placeholder artifacts are dropped from the prompt.
+        return prompts.user_editor_in_chief_draft(
+            artifacts, target_platforms=target_platforms
+        )
     if builder == "fact_checker":
         return prompts.user_fact_checker(artifacts)
     if builder == "quality_judge":
@@ -483,6 +531,7 @@ def _execute_llm_step(
         raw_items=raw_items,
         artifacts=artifacts,
         style=style,
+        target_platforms=_target_platforms(session, run),
     )
     options = options_for_step(
         primary.name, step_def.name, is_judge=step_def.is_judge
@@ -653,8 +702,38 @@ def advance_one_step(session: Session, run: GenerationRun) -> GenerationRun:
         session.commit()
         return run
 
+    # Platform scoping: skip a writer step whose platform the run's channel
+    # does not target. Decided BEFORE the LLM call (and AFTER the cancellation
+    # re-check above) so a Telegram-only channel never pays for the Threads /
+    # Reddit writers. The step still records as `succeeded` with an empty
+    # schema-valid artifact and tokens None — the count of steps/artifacts is
+    # unchanged, only the LLM work is elided. None platform (non-writer steps)
+    # and a None target set (legacy/unrecognized → run all writers) both fall
+    # through to normal execution.
+    target_platforms = _target_platforms(session, run)
+    skip_writer = (
+        step_def.platform is not None
+        and target_platforms is not None
+        and step_def.platform not in target_platforms
+    )
+
     try:
-        if step_def.is_llm:
+        if skip_writer:
+            payload = _empty_artifact_payload(step_def.artifact_name)
+            usage = {
+                "tokens_in": None,
+                "tokens_out": None,
+                "model": None,
+                "used_fallback": False,
+            }
+            log.info(
+                "generation.step.skipped step=%s platform=%s run_id=%s "
+                "reason=channel_platform_mismatch",
+                step_def.name,
+                step_def.platform,
+                run.id,
+            )
+        elif step_def.is_llm:
             payload, usage = _execute_llm_step(session, run, step_def)
         else:
             payload = _execute_finalizer_step(session, run)

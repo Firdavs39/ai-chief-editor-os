@@ -47,6 +47,16 @@ class StepDef:
     # The workflow forwards this for real providers; the mock provider
     # overrides to its deterministic 0.0 (see provider_capabilities).
     role_temperature: float | None = None
+    # Platform-scoped generation: the outbound platform this step writes for
+    # ("telegram" / "threads" / "reddit"). None for every non-writer step
+    # (analysts, critic, editor, fact_checker, judge, finalizer — they are
+    # platform-agnostic). When a run targets a single-platform channel, the
+    # workflow SKIPS writer steps whose `platform` is not in the channel's
+    # target set (no LLM call). STEP_SEQUENCE stays the single source of
+    # truth for "which platform does this writer serve", mirroring the
+    # `role_temperature` pattern above. The step COUNT never changes — a
+    # skipped writer is a no-op step, not a deleted one.
+    platform: str | None = None
 
 
 STEP_SEQUENCE: tuple[StepDef, ...] = (
@@ -89,6 +99,7 @@ STEP_SEQUENCE: tuple[StepDef, ...] = (
         system_builder=prompts.system_platform_writer_telegram,
         user_builder_name="platform_writer_telegram",
         role_temperature=temperature_for_role("platform_writer_telegram"),
+        platform="telegram",
     ),
     StepDef(
         name="platform_writer_threads",
@@ -99,6 +110,7 @@ STEP_SEQUENCE: tuple[StepDef, ...] = (
         system_builder=prompts.system_platform_writer_threads,
         user_builder_name="platform_writer_threads",
         role_temperature=temperature_for_role("platform_writer_threads"),
+        platform="threads",
     ),
     StepDef(
         name="platform_writer_reddit",
@@ -109,6 +121,7 @@ STEP_SEQUENCE: tuple[StepDef, ...] = (
         system_builder=prompts.system_platform_writer_reddit,
         user_builder_name="platform_writer_reddit",
         role_temperature=temperature_for_role("platform_writer_reddit"),
+        platform="reddit",
     ),
     StepDef(
         name="critic_red_team",
@@ -168,6 +181,15 @@ STEP_SEQUENCE: tuple[StepDef, ...] = (
 STEP_NAMES: tuple[str, ...] = tuple(s.name for s in STEP_SEQUENCE)
 TOTAL_STEPS: int = len(STEP_SEQUENCE)  # 11 (10 LLM + finalizer)
 
+# The set of outbound platforms that have a dedicated writer step. A run that
+# targets a channel whose platform is in this set is eligible for
+# platform-scoped generation (writers for other platforms are skipped). A
+# channel platform NOT in this set (unknown/future) disables scoping and runs
+# every writer — the documented legacy/unrecognized fallback.
+WRITER_PLATFORMS: frozenset[str] = frozenset(
+    s.platform for s in STEP_SEQUENCE if s.platform is not None
+)
+
 
 def get_step_by_index(index: int) -> StepDef:
     return STEP_SEQUENCE[index]
@@ -180,11 +202,19 @@ def get_step_by_name(name: str) -> StepDef | None:
     return None
 
 
+def platform_for_step(name: str) -> str | None:
+    """Outbound platform a step writes for, or None for platform-agnostic steps."""
+    step = get_step_by_name(name)
+    return step.platform if step is not None else None
+
+
 __all__ = [
     "STEP_NAMES",
     "STEP_SEQUENCE",
     "StepDef",
     "TOTAL_STEPS",
+    "WRITER_PLATFORMS",
     "get_step_by_index",
     "get_step_by_name",
+    "platform_for_step",
 ]
