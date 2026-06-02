@@ -9,6 +9,10 @@ class PostCandidate(TimestampedBase, table=True):
     __tablename__ = "post_candidates"
 
     cluster_id: str | None = Field(default=None, foreign_key="trend_clusters.id", index=True)
+    # Outbound channel this candidate belongs to. Set by the finalizer from
+    # the run's channel_id. NULL on legacy candidates → default channel target
+    # is used at dispatch (never a silent wrong-chat default).
+    channel_id: str | None = Field(default=None, foreign_key="channels.id", index=True)
     topic: str = ""
     source_summary: str = ""
     why_it_matters: str = ""

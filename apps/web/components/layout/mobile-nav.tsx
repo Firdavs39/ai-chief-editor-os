@@ -20,16 +20,16 @@ export function MobileNavTrigger() {
       <SheetTrigger asChild>
         <button
           type="button"
-          aria-label="Open navigation"
+          aria-label="Открыть меню"
           className="lg:hidden flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-ink-200 transition-colors hover:bg-white/[0.06] hover:text-ink-50"
         >
           <Menu className="h-4 w-4" />
         </button>
       </SheetTrigger>
       <SheetContent side="left" className="px-3 py-5">
-        <SheetTitle className="sr-only">Navigation</SheetTitle>
+        <SheetTitle className="sr-only">Меню</SheetTitle>
         <SheetDescription className="sr-only">
-          Quick links across the AI Chief Editor OS dashboard
+          Разделы дашборда AI Chief Editor OS
         </SheetDescription>
         <NavBrand />
         <NavLinks onNavigate={() => setOpen(false)} />

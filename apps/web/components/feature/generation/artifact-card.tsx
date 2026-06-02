@@ -25,14 +25,14 @@ const ARTIFACT_LABELS: Record<string, { ru: string; icon: typeof FileText }> = {
   research_brief: { ru: "Исследование источников", icon: FileText },
   angle: { ru: "Стратегический угол", icon: Sparkles },
   psych: { ru: "Психология аудитории", icon: Sparkles },
-  voice_brief: { ru: "Style DNA", icon: Sparkles },
-  tg_post: { ru: "Telegram Writer", icon: FileText },
-  threads_post: { ru: "Threads Writer", icon: FileText },
-  reddit_post: { ru: "Reddit Writer", icon: FileText },
-  critic_report: { ru: "Критик / Red Team", icon: Sparkles },
-  final_brief: { ru: "Главный редактор", icon: FileText },
-  quality_report: { ru: "Quality Judge", icon: Sparkles },
-  candidate_link: { ru: "Финализация", icon: Sparkles },
+  tg_post: { ru: "Текст для Telegram", icon: FileText },
+  threads_post: { ru: "Текст для Threads", icon: FileText },
+  reddit_post: { ru: "Текст для Reddit", icon: FileText },
+  critic_report: { ru: "Критика и слабые места", icon: Sparkles },
+  final_brief: { ru: "Работа главного редактора", icon: FileText },
+  fact_check: { ru: "Проверка фактов", icon: Sparkles },
+  quality_report: { ru: "Оценка качества", icon: Sparkles },
+  candidate_link: { ru: "Финальная сборка", icon: Sparkles },
 };
 
 // Per-artifact whitelist of fields the UI is allowed to render. Anything
@@ -42,7 +42,6 @@ const ARTIFACT_FIELDS: Record<string, readonly string[]> = {
   research_brief: ["editorial_rationale", "fact_bullets", "source_handles", "gaps"],
   angle: ["editorial_rationale", "primary_angle", "contrarian_take", "why_now"],
   psych: ["editorial_rationale", "target_emotion", "hook_pattern", "cognitive_bias_lever"],
-  voice_brief: ["editorial_rationale", "sentence_length_target", "vocab_lane", "must_avoid"],
   tg_post: ["editorial_rationale", "hook", "body", "cta"],
   threads_post: ["editorial_rationale", "body", "cta"],
   reddit_post: ["editorial_rationale", "title", "body", "cta"],
@@ -64,12 +63,14 @@ const ARTIFACT_FIELDS: Record<string, readonly string[]> = {
     "final_reddit",
     "cta",
   ],
+  fact_check: ["editorial_rationale", "unsupported_claims", "grounding_score"],
   quality_report: [
     "editorial_rationale",
     "style_match_score",
     "viral_score",
     "slop_risk",
     "controversy_risk",
+    "hook_score",
     "recommendation",
   ],
   candidate_link: ["candidate_id"],
@@ -104,11 +105,14 @@ const FIELD_LABELS_RU: Record<string, string> = {
   final_tg: "Финальный Telegram",
   final_threads: "Финальный Threads",
   final_reddit: "Финальный Reddit",
-  style_match_score: "Style match",
-  viral_score: "Viral",
-  slop_risk: "Slop risk",
-  controversy_risk: "Controversy risk",
+  style_match_score: "Совпадение со стилем",
+  viral_score: "Виральность",
+  slop_risk: "Риск ИИ-штампов",
+  controversy_risk: "Риск спорности",
+  hook_score: "Сила крючка (0–1)",
   recommendation: "Рекомендация",
+  unsupported_claims: "Неподтверждённые утверждения",
+  grounding_score: "Привязка к фактам (0–1)",
   candidate_id: "ID кандидата",
 };
 
@@ -126,7 +130,7 @@ function renderValue(value: unknown): React.ReactNode {
     return <span>{value}</span>;
   }
   if (typeof value === "boolean") {
-    return <span>{value ? "yes" : "no"}</span>;
+    return <span>{value ? "да" : "нет"}</span>;
   }
   if (typeof value === "string") {
     return <span className="whitespace-pre-wrap break-words">{value}</span>;
@@ -151,7 +155,7 @@ function renderValue(value: unknown): React.ReactNode {
   // change goes wrong — in which case we show a tag rather than the
   // raw payload.
   return (
-    <span className="text-ink-500 italic">[non-primitive value hidden]</span>
+    <span className="text-ink-500 italic">[значение скрыто]</span>
   );
 }
 

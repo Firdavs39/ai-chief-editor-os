@@ -2,6 +2,18 @@ import * as React from "react";
 
 type Slider = { key: string; value: number };
 
+// Короткие русские подписи осей графика голоса.
+const AXIS_RU: Record<string, string> = {
+  expert: "Экспертность",
+  playful: "Игривость",
+  contrarian: "Провокац.",
+  warm: "Теплота",
+  formal: "Формальн.",
+  formality: "Формальн.",
+  humor: "Юмор",
+  emotional: "Эмоции",
+};
+
 export function VoiceRadar({ sliders, size = 220 }: { sliders: Slider[]; size?: number }) {
   if (!sliders.length) {
     sliders = [
@@ -92,7 +104,7 @@ export function VoiceRadar({ sliders, size = 220 }: { sliders: Slider[]; size?: 
               fill="rgba(229,232,239,0.85)"
               style={{ textTransform: "uppercase", letterSpacing: "0.18em" }}
             >
-              {s.key}
+              {AXIS_RU[s.key] ?? s.key}
             </text>
             <text
               x={lx}

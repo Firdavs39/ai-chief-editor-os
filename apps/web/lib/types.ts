@@ -303,6 +303,54 @@ export type GenerationRunsCreateResponse = {
   status: string;
 };
 
+// --- Channels (multi-channel publishing) ------------------------------------
+// Mirrors ChannelOut / ChannelCreate / ChannelUpdate
+// (packages/shared/chief_editor/schemas/common.py). A Channel is one outbound
+// destination (e.g. a Telegram channel) with its own style profile and its
+// own subset of parsing sources. `target_chat_id` is a PUBLIC identifier —
+// the bot token never lives here; it stays in the Vault under `bot_provider`.
+
+export type ChannelPlatform = "telegram" | "threads" | "reddit";
+
+export type Channel = {
+  id: string;
+  name: string;
+  slug: string;
+  platform: string;
+  target_chat_id: string;
+  bot_provider: string;
+  lang: string;
+  style_profile_id: string | null;
+  enabled: boolean;
+  is_default: boolean;
+  settings: Record<string, unknown>;
+  source_ids: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChannelCreate = {
+  name: string;
+  slug?: string;
+  platform?: ChannelPlatform;
+  target_chat_id?: string;
+  bot_provider?: string;
+  lang?: string;
+  style_profile_id?: string | null;
+  enabled?: boolean;
+  settings?: Record<string, unknown>;
+};
+
+export type ChannelUpdate = {
+  name?: string;
+  target_chat_id?: string;
+  bot_provider?: string;
+  lang?: string;
+  style_profile_id?: string | null;
+  enabled?: boolean;
+  settings?: Record<string, unknown>;
+};
+
 // --- Integration Secrets Vault ----------------------------------------------
 
 export type VaultSource = "env" | "vault" | "missing" | "env+vault";

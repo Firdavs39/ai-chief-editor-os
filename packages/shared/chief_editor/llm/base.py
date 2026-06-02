@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 from abc import ABC, abstractmethod
 from typing import Any
+
+log = logging.getLogger("chief_editor.llm")
 
 
 class LLMProvider(ABC):
@@ -40,17 +43,47 @@ class LLMProvider(ABC):
     def rewrite(self, text: str, mode: str) -> str: ...
 
     def _safe_parse(self, raw: str) -> dict[str, Any] | None:
+        """Parse an LLM JSON answer, escalating tolerance only on failure.
+
+        1. Strict ``json.loads`` — the happy path.
+        2. Slice the first ``{`` .. last ``}`` — strips markdown fences and
+           any prose around a clean object.
+        3. ``json_repair`` — rescues the messy-but-recoverable cases that
+           strict parsing cannot: truncated output (model cut off / hit the
+           token cap), unescaped quotes or literal newlines inside string
+           values, trailing commas. This stage is reached ONLY after strict
+           parsing already failed, so it can rescue a doomed call but never
+           degrade a valid one. The downstream pydantic validator still
+           enforces the schema, so a wrongly-shaped repair is caught there.
+        """
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
-            start = raw.find("{")
-            end = raw.rfind("}")
-            if start != -1 and end > start:
-                try:
-                    return json.loads(raw[start : end + 1])
-                except json.JSONDecodeError:
-                    return None
-            return None
+            pass
+
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end > start:
+            try:
+                return json.loads(raw[start : end + 1])
+            except json.JSONDecodeError:
+                pass
+
+        # Tolerant repair — last resort before giving up.
+        try:
+            from json_repair import repair_json
+
+            obj = repair_json(raw, return_objects=True)
+            if isinstance(obj, dict) and obj:
+                log.info(
+                    "llm.json.repaired chars=%d keys=%d",
+                    len(raw),
+                    len(obj),
+                )
+                return obj
+        except Exception:  # noqa: BLE001 — repair is best-effort, never fatal
+            pass
+        return None
 
     def _record_usage(
         self,

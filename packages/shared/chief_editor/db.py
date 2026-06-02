@@ -71,11 +71,40 @@ def reset_engine() -> None:
 
 
 def init_db() -> None:
-    """Create all tables. Idempotent."""
+    """Create all tables, then run the idempotent default-channel migration.
+
+    Both steps are safe to repeat on every boot. The migration creates the
+    default Channel, links existing sources, and backfills NULL channel FKs
+    on runs/candidates so a single-channel deployment becomes multi-channel
+    aware with no manual step.
+    """
     # Importing models registers them with SQLModel.metadata.
     from . import models  # noqa: F401
 
     SQLModel.metadata.create_all(get_engine())
+
+    # Default-channel migration. Kept defensive: a migration failure must not
+    # prevent the API/worker from booting (the per-channel code paths all fall
+    # back to single-channel behaviour when no default channel exists).
+    try:
+        from .services.channels import (
+            ensure_channel_columns,
+            ensure_default_channel,
+        )
+
+        # ALTER pre-existing tables for the new channel_id columns BEFORE any
+        # query touches them (create_all can't add columns to old tables).
+        ensure_channel_columns(get_engine())
+
+        with Session(get_engine()) as session:
+            ensure_default_channel(session)
+    except Exception:  # noqa: BLE001 — never block boot on the migration
+        import logging
+
+        logging.getLogger("chief_editor.db").warning(
+            "default-channel migration skipped (will retry next boot)",
+            exc_info=True,
+        )
 
 
 def get_session() -> Generator[Session, None, None]:

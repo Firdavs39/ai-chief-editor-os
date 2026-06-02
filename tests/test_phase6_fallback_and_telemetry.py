@@ -277,7 +277,13 @@ def test_token_usage_persisted_to_step(session, monkeypatch) -> None:
 
 def test_mock_provider_records_approximate_usage(client, session) -> None:
     """The mock provider must populate tokens_in/out so cost-tracking UI
-    has values to display in dev mode."""
+    has values to display in dev mode.
+
+    Platform-scoped generation (May 2026): the default channel is Telegram, so
+    the Threads + Reddit writers are SKIPPED (no LLM call) and record None
+    tokens like the finalizer. We assert tokens on the steps that ACTUALLY
+    called the model, not on a fixed count of 10.
+    """
     from chief_editor.llm import registry as llm_registry
 
     llm_registry.reset_provider_cache()
@@ -291,18 +297,24 @@ def test_mock_provider_records_approximate_usage(client, session) -> None:
     steps = session.exec(
         select(GenerationStep).where(GenerationStep.run_id == run.id)
     ).all()
-    # 10 LLM steps + 1 finalizer (non-LLM, tokens stay None)
-    llm_steps = [s for s in steps if s.name != "finalizer"]
-    finalizer_steps = [s for s in steps if s.name == "finalizer"]
+    no_llm_names = {
+        "finalizer",
+        "platform_writer_threads",  # skipped on a Telegram channel
+        "platform_writer_reddit",   # skipped on a Telegram channel
+    }
+    executed_llm = [s for s in steps if s.name not in no_llm_names]
+    no_llm_steps = [s for s in steps if s.name in no_llm_names]
 
-    for s in llm_steps:
+    # 10 LLM roles − 2 skipped writers = 8 that called the mock provider.
+    assert len(executed_llm) == 8
+    for s in executed_llm:
         assert s.tokens_in is not None, f"step {s.name} missing tokens_in"
         assert s.tokens_out is not None, f"step {s.name} missing tokens_out"
         assert s.tokens_in > 0
         assert s.tokens_out > 0
 
-    for s in finalizer_steps:
-        # Finalizer is deterministic Python, no LLM call → no token data
+    for s in no_llm_steps:
+        # Finalizer (deterministic Python) + skipped writers → no LLM, no tokens.
         assert s.tokens_in is None
         assert s.tokens_out is None
 

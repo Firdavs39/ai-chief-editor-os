@@ -24,39 +24,39 @@ export default async function AnalyticsPage() {
   return (
     <>
       <Topbar
-        title="Analytics"
-        subtitle="Что зашло, какие источники работают, какие крючки сильнее"
-        pill={{ label: "demo metrics", tone: "cyan" }}
+        title="Аналитика"
+        subtitle="Что зашло, какие источники работают, какие приёмы сильнее"
+        pill={{ label: "демо-метрики", tone: "cyan" }}
       />
       <PageShell>
         <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-4 3xl:gap-4">
           <StatCard
             tone="violet"
             icon={Flame}
-            label="Published"
+            label="Опубликовано"
             value={a.totals.published}
-            hint="last 14 days"
+            hint="за 14 дней"
           />
           <StatCard
             icon={Activity}
-            label="Approval rate"
+            label="Доля одобрений"
             value={`${approvalRate}%`}
-            hint={`${a.totals.approved}/${a.totals.approved + a.totals.rejected} approve`}
-            trend={{ direction: "up", delta: "+6 vs prev" }}
+            hint={`одобрено ${a.totals.approved} из ${a.totals.approved + a.totals.rejected}`}
+            trend={{ direction: "up", delta: "+6 к прошлому" }}
           />
           <StatCard
             icon={Layers}
-            label="Avg engagement"
+            label="Среднее вовлечение"
             value={(topSource?.avg_engagement ?? 0).toLocaleString()}
-            hint="top source last 14d"
+            hint="лучший источник за 14 дней"
             spark={timelineSpark}
           />
           <StatCard
             tone="cyan"
             icon={LineChart}
-            label="Posts in queue"
+            label="Постов в очереди"
             value={a.totals.scheduled}
-            hint="scheduled future"
+            hint="запланировано"
           />
         </div>
 
@@ -67,29 +67,29 @@ export default async function AnalyticsPage() {
               <div className="sm:col-span-2 space-y-2">
                 <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-accent-violet">
                   <Trophy className="h-3.5 w-3.5" />
-                  This week's best pattern
+                  Лучший приём недели
                 </div>
                 <h2 className="display text-[18px] sm:text-[20px] 3xl:text-[24px] font-semibold leading-tight tracking-tight text-ink-50">
-                  <span className="text-ink-300">Hooks of type</span>{" "}
+                  <span className="text-ink-300">Крючки типа</span>{" "}
                   <span className="text-ink-50">«{topHook.hook_type}»</span>{" "}
-                  <span className="text-ink-300">drove</span>{" "}
+                  <span className="text-ink-300">дали</span>{" "}
                   <span className="num text-accent-cyan">
                     {Math.round(topHook.viral_avg * 100)}
                   </span>{" "}
-                  <span className="text-ink-300">avg viral score</span>
+                  <span className="text-ink-300">средней виральности</span>
                 </h2>
                 <p className="text-sm text-ink-300 leading-relaxed">
                   Источник{" "}
-                  <span className="text-ink-100 font-mono">{topSource.source}</span> привёл{" "}
+                  <span className="text-ink-100 font-mono">{topSource.source}</span> дал{" "}
                   <span className="num text-ink-100">
                     {topSource.avg_engagement.toLocaleString()}
                   </span>{" "}
-                  среднего вовлечения. Используй этот формат как baseline на следующей неделе.
+                  среднего вовлечения. Берите этот формат за основу на следующей неделе.
                 </p>
               </div>
               <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-ink-500">
-                  Top hook
+                  Лучший крючок
                 </div>
                 <div className="num display text-2xl font-semibold text-ink-50 mt-1">
                   {Math.round(topHook.viral_avg * 100)}
@@ -97,7 +97,7 @@ export default async function AnalyticsPage() {
                 <div className="text-[11px] text-ink-400 mt-0.5">{topHook.hook_type}</div>
                 <div className="mt-3 h-px bg-hairline" />
                 <div className="mt-3 text-[10px] uppercase tracking-[0.18em] text-ink-500">
-                  Top source
+                  Лучший источник
                 </div>
                 <div className="num display text-xl font-semibold text-ink-50 mt-1">
                   {topSource.avg_engagement.toLocaleString()}
@@ -112,7 +112,7 @@ export default async function AnalyticsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
-                <Flame className="h-4 w-4 text-accent-violet" /> Performance by hook type
+                <Flame className="h-4 w-4 text-accent-violet" /> Результаты по типу крючка
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -130,7 +130,7 @@ export default async function AnalyticsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
-                <LineChart className="h-4 w-4 text-accent-cyan" /> Learning timeline · 14 days
+                <LineChart className="h-4 w-4 text-accent-cyan" /> Динамика обучения · 14 дней
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -142,7 +142,7 @@ export default async function AnalyticsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">
-              <Layers className="h-4 w-4 text-accent-violet" /> Source → performance
+              <Layers className="h-4 w-4 text-accent-violet" /> Источник → результат
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -151,8 +151,8 @@ export default async function AnalyticsPage() {
         </Card>
 
         <PageSection
-          title="Patterns the AI noticed"
-          description="Эти инсайты обновляются после каждого approve / metric snapshot"
+          title="Что заметил ИИ"
+          description="Эти выводы обновляются после каждого одобрения и новых метрик"
         >
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {a.best_patterns.map((p, i) => (

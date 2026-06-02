@@ -1,6 +1,6 @@
 import * as React from "react";
 import Link from "next/link";
-import { Radio, Sparkles, Filter, ArrowUpRight } from "lucide-react";
+import { Sparkles, Filter } from "lucide-react";
 import { Topbar } from "@/components/layout/topbar";
 import { PageShell, PageSection } from "@/components/layout/page-shell";
 import { TrendCard } from "@/components/feature/trend-card";
@@ -13,10 +13,10 @@ import { data } from "@/lib/data";
 import { timeAgo } from "@/lib/utils";
 
 const FILTERS = [
-  { label: "All", value: "all" },
-  { label: "Russian", value: "ru" },
-  { label: "English", value: "en" },
-  { label: "Score 70+", value: "hot" },
+  { label: "Все", value: "all" },
+  { label: "Русские", value: "ru" },
+  { label: "Английские", value: "en" },
+  { label: "Рейтинг 70+", value: "hot" },
 ];
 
 type SearchParams = {
@@ -45,14 +45,14 @@ export default async function TrendsPage({
   return (
     <>
       <Topbar
-        title="Trend Radar"
-        subtitle="Кластеры сигналов, рейтинг и причины ранжирования"
-        pill={{ label: `${filtered.length} clusters`, tone: "violet" }}
+        title="Тренды"
+        subtitle="Группы сигналов из источников, их рейтинг и почему они важны"
+        pill={{ label: `${filtered.length} тем`, tone: "violet" }}
         actions={
           <div className="flex items-center gap-2">
             <GenerateBriefButton size="sm" clusterId={focus?.id ?? null} />
             <Button size="sm" variant="outline" asChild>
-              <Link href="/editor"><Sparkles className="h-4 w-4" /> Open editor</Link>
+              <Link href="/editor"><Sparkles className="h-4 w-4" /> Редактор →</Link>
             </Button>
           </div>
         }
@@ -77,14 +77,14 @@ export default async function TrendsPage({
           })}
           <div className="ml-auto flex items-center gap-2 text-xs text-ink-400">
             <Filter className="h-3.5 w-3.5" />
-            sorted by total score
+            по убыванию рейтинга
           </div>
         </div>
 
         <div className="grid gap-4 lg:gap-5 xl:gap-6 xl:grid-cols-[1.4fr_1fr] 3xl:grid-cols-[1.6fr_1fr]">
           <PageSection
-            title="Clusters"
-            description="Каждый кластер — это нормализованная группа сигналов из нескольких источников"
+            title="Темы"
+            description="Каждая тема — это группа похожих сигналов из нескольких источников"
           >
             <div className="grid gap-3 sm:grid-cols-2 3xl:grid-cols-2 4xl:grid-cols-3">
               {filtered.map((t, i) => (
@@ -94,8 +94,8 @@ export default async function TrendsPage({
           </PageSection>
 
           <PageSection
-            title="Score breakdown"
-            description={focus ? "Прозрачное разложение по каждому фактору" : undefined}
+            title="Из чего складывается рейтинг"
+            description={focus ? "Понятно, какой фактор сколько добавил" : undefined}
           >
             {focus ? (
               <Card>
@@ -123,7 +123,7 @@ export default async function TrendsPage({
 
                   <div className="space-y-2">
                     <div className="text-[11px] uppercase tracking-[0.18em] text-ink-500">
-                      Sources mix
+                      Источники темы
                     </div>
                     <div className="space-y-1.5">
                       {focus.sources_summary.map((s) => (
@@ -140,27 +140,28 @@ export default async function TrendsPage({
 
                   <div className="grid grid-cols-2 gap-3 text-[11px]">
                     <div className="rounded-lg border border-white/[0.05] bg-white/[0.02] p-2.5">
-                      <div className="text-ink-500">First seen</div>
+                      <div className="text-ink-500">Впервые замечено</div>
                       <div className="text-ink-100 mt-0.5">{timeAgo(focus.first_seen_at)}</div>
                     </div>
                     <div className="rounded-lg border border-white/[0.05] bg-white/[0.02] p-2.5">
-                      <div className="text-ink-500">Last signal</div>
+                      <div className="text-ink-500">Последний сигнал</div>
                       <div className="text-ink-100 mt-0.5">{timeAgo(focus.last_seen_at)}</div>
                     </div>
                   </div>
 
-                  <Link
-                    href={`/editor?cluster=${focus.id}`}
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-accent-violet/30 bg-accent-violet/10 px-3 py-2 text-sm font-medium text-accent-violet hover:bg-accent-violet/15"
-                  >
-                    <Sparkles className="h-4 w-4" /> Write a candidate from this cluster
-                    <ArrowUpRight className="h-3.5 w-3.5" />
-                  </Link>
+                  {/* Это действие: запускает создание поста по теме (требует токен). */}
+                  <div className="pt-1">
+                    <div className="text-[11px] text-ink-400 mb-2 leading-relaxed">
+                      Создать пост по этой теме. Генерация занимает ~15–40 минут —
+                      вкладку можно закрыть, прогресс не потеряется.
+                    </div>
+                    <GenerateBriefButton clusterId={focus.id} label="Создать пост по теме" />
+                  </div>
                 </CardContent>
               </Card>
             ) : (
               <Card className="p-8 text-center text-sm text-ink-400">
-                Pick a cluster to see why it ranks high.
+                Выберите тему слева, чтобы увидеть, почему у неё высокий рейтинг.
               </Card>
             )}
           </PageSection>

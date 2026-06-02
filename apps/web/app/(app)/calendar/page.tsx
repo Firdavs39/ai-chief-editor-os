@@ -22,6 +22,23 @@ const PLATFORM_TONE = {
   mock: "outline",
 } as const;
 
+const CAL_STATUS_RU: Record<string, string> = {
+  pending: "в очереди",
+  done: "опубликовано",
+  failed: "ошибка",
+  blocked: "заблок.",
+  dry_run: "проверка",
+  pending_config: "нет настроек",
+};
+
+function pluralEntries(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "запись";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "записи";
+  return "записей";
+}
+
 function startOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }
@@ -55,19 +72,19 @@ export default async function CalendarPage() {
   return (
     <>
       <Topbar
-        title="Content Calendar"
-        subtitle="Расписание публикаций по платформам"
-        pill={{ label: `${calendar.length} entries`, tone: "violet" }}
+        title="Календарь"
+        subtitle="Расписание публикаций по площадкам"
+        pill={{ label: `${calendar.length} ${pluralEntries(calendar.length)}`, tone: "violet" }}
       />
       <PageShell>
         <PageSection
-          title={now.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
-          description="Месячный обзор. Чипы — это PublishJob c учётом approval."
+          title={now.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}
+          description="Обзор за месяц. Плашки — это запланированные публикации (после одобрения)."
         >
           {/* Month grid: hidden on mobile, visible from md+ */}
           <Card className="hidden md:block p-3 sm:p-4 3xl:p-5">
             <div className="grid grid-cols-7 gap-2 text-[10px] uppercase tracking-[0.18em] text-ink-500">
-              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+              {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((d) => (
                 <div key={d} className="px-1.5">{d}</div>
               ))}
             </div>
@@ -123,7 +140,7 @@ export default async function CalendarPage() {
                         );
                       })}
                       {items.length > 3 && (
-                        <div className="text-[10px] text-ink-500">+{items.length - 3} more</div>
+                        <div className="text-[10px] text-ink-500">ещё +{items.length - 3}</div>
                       )}
                     </div>
                   </div>
@@ -140,7 +157,7 @@ export default async function CalendarPage() {
                 <Card key={day} className="p-3">
                   <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-ink-400 pb-2">
                     <span>
-                      {new Date(day).toLocaleDateString("en-GB", {
+                      {new Date(day).toLocaleDateString("ru-RU", {
                         weekday: "short",
                         day: "2-digit",
                         month: "short",
@@ -166,7 +183,7 @@ export default async function CalendarPage() {
                           <Icon className="h-3.5 w-3.5 shrink-0" />
                           <span className="flex-1 truncate text-ink-100">{e.topic}</span>
                           <span className="text-[10px] text-ink-400 shrink-0">
-                            {new Date(e.scheduled_at).toLocaleTimeString("en-GB", {
+                            {new Date(e.scheduled_at).toLocaleTimeString("ru-RU", {
                               hour: "2-digit",
                               minute: "2-digit",
                             })}
@@ -186,8 +203,8 @@ export default async function CalendarPage() {
         </PageSection>
 
         <PageSection
-          title="Upcoming queue"
-          description="Ближайшие job-ы по времени"
+          title="Ближайшие публикации"
+          description="Что выйдет в ближайшее время"
         >
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 3xl:grid-cols-3 4xl:grid-cols-4">
             {upcoming.map((e) => {
@@ -196,7 +213,9 @@ export default async function CalendarPage() {
                 <Card key={e.job_id} className="p-4">
                   <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-ink-500">
                     <Icon className="h-3 w-3" /> {e.platform}
-                    <span className="ml-auto">{e.status}</span>
+                    <span className="ml-auto normal-case tracking-normal">
+                      {CAL_STATUS_RU[e.status] ?? e.status}
+                    </span>
                   </div>
                   <Link
                     href={`/editor/${e.candidate_id}`}
@@ -216,7 +235,7 @@ export default async function CalendarPage() {
             })}
             {upcoming.length === 0 && (
               <Card className="p-6 text-center text-xs text-ink-400">
-                Очередь пуста. Approve кандидата, чтобы запланировать публикацию.
+                Очередь пуста. Одобрите пост, чтобы запланировать публикацию.
               </Card>
             )}
           </div>

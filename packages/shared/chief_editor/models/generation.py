@@ -4,8 +4,9 @@ Phase 1: data model only. No worker execution wired here.
 
 Invariants enforced by code structure (not by DB constraints):
 - A `GenerationRun` flows queued → running → succeeded | failed | cancelled.
-- `candidate_id` is set ONLY by the finalizer service after Step 8 (Quality
-  Judge) succeeds. The router and the worker never write it directly.
+- `candidate_id` is set ONLY by the finalizer service (the last step) after
+  the Quality Judge step succeeds. The router and the worker never write it
+  directly.
 - `GenerationArtifact.payload` stores only the canonical JSON output of a
   step. Never raw model text. Never private chain-of-thought.
 - All `error_message` fields are truncated to 240 characters at the call
@@ -29,6 +30,12 @@ class GenerationRun(TimestampedBase, table=True):
     cluster_id: str | None = Field(
         default=None, foreign_key="trend_clusters.id", index=True
     )
+    # Which outbound channel this run targets. NULL on legacy runs created
+    # before the multi-channel model; the workflow falls back to the default
+    # channel (then the default style profile) for those.
+    channel_id: str | None = Field(
+        default=None, foreign_key="channels.id", index=True
+    )
     requested_by: str = Field(default="api", max_length=32)
     # api | worker | manual
 
@@ -37,10 +44,13 @@ class GenerationRun(TimestampedBase, table=True):
 
     current_step: str = Field(default="", max_length=48)
     step_index: int = 0
-    total_steps: int = 8
+    # Placeholder default; `enqueue_run` always overwrites this with the live
+    # `services.generation.TOTAL_STEPS` (currently 11: 10 LLM roles +
+    # finalizer). Kept in sync so a row created without enqueue_run still
+    # reports a sane total.
+    total_steps: int = 11
 
-    # Filled ONLY by finalizer.py after Step 8 succeeds. Phase 1 never writes
-    # this column.
+    # Filled ONLY by finalizer.py after the Quality Judge step succeeds.
     candidate_id: str | None = Field(
         default=None, foreign_key="post_candidates.id", index=True
     )
@@ -66,9 +76,9 @@ class GenerationStep(TimestampedBase, table=True):
 
     name: str = Field(index=True, max_length=48)
     # research_analyst | trend_strategist | audience_psychology_analyst |
-    # style_dna_editor | platform_writer_telegram | platform_writer_threads |
-    # platform_writer_reddit | critic_red_team | editor_in_chief_finalizer |
-    # quality_judge
+    # platform_writer_telegram | platform_writer_threads |
+    # platform_writer_reddit | critic_red_team | editor_in_chief_draft |
+    # fact_checker | quality_judge | finalizer
 
     status: str = Field(default="pending", max_length=24)
     # pending | running | succeeded | failed | skipped | cancelled
@@ -91,14 +101,16 @@ class GenerationArtifact(TimestampedBase, table=True):
     step_id: str = Field(foreign_key="generation_steps.id", index=True)
 
     name: str = Field(max_length=48)
-    # research_brief | angle | psych | voice_brief | tg_post | threads_post |
-    # reddit_post | critic_report | final_brief | quality_report
+    # research_brief | angle | psych | tg_post | threads_post | reddit_post |
+    # critic_report | final_brief | fact_check | quality_report
 
     schema_version: str = Field(default="v1", max_length=12)
 
     # Canonical step output JSON. Storage contract:
     # - Only fields defined by the step's prompt schema.
-    # - May include an `editorial_rationale` field (<= 240 chars, user-safe).
+    # - May include an `editorial_rationale` field (<= 1500 chars, user-safe;
+    #   raised from 240 in Phase 5.2 — enough for a paragraph, too small to
+    #   smuggle hidden chain-of-thought; enforced by the artifact pydantic).
     # - MUST NOT include raw model text, hidden chain-of-thought, or
     #   private reasoning beyond the bounded `editorial_rationale`.
     payload: dict[str, Any] = Field(

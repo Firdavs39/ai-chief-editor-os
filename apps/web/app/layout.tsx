@@ -10,7 +10,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "AI Chief Editor OS",
-  description: "Premium AI content intelligence platform.",
+  description: "Платформа умного управления контентом на базе ИИ.",
 };
 
 export default function RootLayout({
@@ -19,7 +19,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="ru" className="dark">
       <body className={`${inter.variable} font-sans antialiased`}>{children}</body>
     </html>
   );

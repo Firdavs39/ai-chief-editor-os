@@ -166,12 +166,12 @@ def test_phase_q_constants_exposed_correctly_to_workflow() -> None:
         prompts.system_research_analyst,
         prompts.system_trend_strategist,
         prompts.system_audience_psychology,
-        prompts.system_style_dna_editor,
         prompts.system_platform_writer_telegram,
         prompts.system_platform_writer_threads,
         prompts.system_platform_writer_reddit,
         prompts.system_critic_red_team,
         prompts.system_editor_in_chief_draft,
+        prompts.system_fact_checker,
         prompts.system_quality_judge,
     ):
         # None style profile — most realistic for new operator
@@ -186,8 +186,16 @@ def test_phase_q_constants_exposed_correctly_to_workflow() -> None:
 
 
 def test_full_workflow_token_telemetry_recorded(client, session) -> None:
-    """Phase 6 token telemetry: every successful LLM step has tokens_in/out
-    recorded. Mock provider populates these; real Kimi too."""
+    """Phase 6 token telemetry: every LLM step that actually CALLED the model
+    records tokens_in/out. Mock provider populates these; real Kimi too.
+
+    Platform-scoped generation (May 2026): the default channel is Telegram, so
+    the Threads + Reddit writer steps are SKIPPED (no LLM call) and record
+    tokens_in/out = None like the finalizer. The remaining 8 LLM steps still
+    record tokens. We assert by "did this step call the LLM" (tokens not None
+    on the executed set) rather than a hard count of 10, so the contract
+    tracks the scoping behaviour instead of fighting it.
+    """
     client.post("/demo/seed")
     cluster = session.exec(select(TrendCluster)).first()
     runs = enqueue_run(session, cluster_id=cluster.id, top_n=1, requested_by="test")
@@ -198,13 +206,22 @@ def test_full_workflow_token_telemetry_recorded(client, session) -> None:
     steps = session.exec(
         select(GenerationStep).where(GenerationStep.run_id == run.id)
     ).all()
-    llm_steps = [s for s in steps if s.name != "finalizer"]
     finalizer_steps = [s for s in steps if s.name == "finalizer"]
+    skipped_writers = {"platform_writer_threads", "platform_writer_reddit"}
+    # Steps that actually invoked the model: every LLM step except the two
+    # skipped writers (Telegram-only channel) and the non-LLM finalizer.
+    executed_llm = [
+        s
+        for s in steps
+        if s.name != "finalizer" and s.name not in skipped_writers
+    ]
 
-    assert len(llm_steps) == 10
     assert len(finalizer_steps) == 1
+    assert len(executed_llm) == 8, (
+        "Telegram-only run executes 8 LLM steps (10 roles − 2 skipped writers)"
+    )
 
-    for step in llm_steps:
+    for step in executed_llm:
         assert step.tokens_in is not None and step.tokens_in > 0, (
             f"step {step.name} missing tokens_in"
         )
@@ -212,8 +229,10 @@ def test_full_workflow_token_telemetry_recorded(client, session) -> None:
             f"step {step.name} missing tokens_out"
         )
 
-    # Finalizer doesn't call LLM — tokens stay None
-    for step in finalizer_steps:
+    # Finalizer + skipped writers don't call the LLM — tokens stay None.
+    no_llm = finalizer_steps + [s for s in steps if s.name in skipped_writers]
+    assert len(no_llm) == 3
+    for step in no_llm:
         assert step.tokens_in is None
         assert step.tokens_out is None
 

@@ -65,21 +65,21 @@ const OLLAMA_PRESETS: OllamaPreset[] = [
   {
     id: "cloud",
     label: "Ollama Cloud / Kimi K2.6",
-    description: "Hosted Kimi K2.6 via ollama.com — fastest path to a real LLM.",
+    description: "Kimi K2.6 в облаке через ollama.com — самый быстрый путь к реальной модели.",
     base_url: "https://ollama.com",
     model: "kimi-k2.6:cloud",
     apiKeyRequired: true,
-    apiKeyHint: "Paste your Ollama API key.",
+    apiKeyHint: "Вставьте свой ключ Ollama.",
   },
   {
     id: "local",
-    label: "Local Ollama",
-    description: "Self-hosted Ollama on this machine or your network.",
+    label: "Локальный Ollama",
+    description: "Ollama на этом компьютере или в вашей сети.",
     base_url: "http://localhost:11434/v1",
     model: "kimi-k2.6:cloud",
     apiKeyRequired: false,
     apiKeyHint:
-      "API key is optional for local Ollama. Backend must be able to reach your server.",
+      "Для локального Ollama ключ необязателен. Сервер должен иметь доступ к вашей машине.",
   },
 ];
 
@@ -103,13 +103,13 @@ function StatusBadge({ status }: { status: string }) {
     string,
     { variant: "mint" | "cyan" | "violet" | "amber" | "rose" | "outline"; label: string }
   > = {
-    valid: { variant: "mint", label: "valid" },
-    configured: { variant: "violet", label: "configured" },
-    unknown: { variant: "outline", label: "unknown" },
-    invalid: { variant: "rose", label: "invalid" },
-    error: { variant: "rose", label: "error" },
-    missing_config: { variant: "amber", label: "missing" },
-    disabled: { variant: "outline", label: "disabled" },
+    valid: { variant: "mint", label: "работает" },
+    configured: { variant: "violet", label: "настроено" },
+    unknown: { variant: "outline", label: "неизвестно" },
+    invalid: { variant: "rose", label: "неверно" },
+    error: { variant: "rose", label: "ошибка" },
+    missing_config: { variant: "amber", label: "нет настроек" },
+    disabled: { variant: "outline", label: "выключено" },
   };
   const m = map[status] ?? { variant: "outline" as const, label: status };
   return <Badge variant={m.variant}>{m.label}</Badge>;
@@ -126,14 +126,14 @@ function FieldDescription({ field }: { field: VaultFieldStatus }) {
     if (field.is_secret) {
       return (
         <span className="text-[11px] text-ink-400">
-          Already set in <code className="font-mono text-ink-200">.env</code>
-          {meta.length ? ` · length ${meta.length}` : ""}
+          Уже задано в <code className="font-mono text-ink-200">.env</code>
+          {meta.length ? ` · длина ${meta.length}` : ""}
         </span>
       );
     }
     return (
       <span className="text-[11px] text-ink-400">
-        Already set in <code className="font-mono text-ink-200">.env</code>:{" "}
+        Уже задано в <code className="font-mono text-ink-200">.env</code>:{" "}
         <span className="font-mono text-ink-200">{String(meta.value ?? "")}</span>
       </span>
     );
@@ -142,18 +142,18 @@ function FieldDescription({ field }: { field: VaultFieldStatus }) {
     if (field.is_secret) {
       return (
         <span className="text-[11px] text-ink-400">
-          stored · {meta.mask ?? "•••••"}
-          {meta.length ? ` · length ${meta.length}` : ""}
+          сохранено · {meta.mask ?? "•••••"}
+          {meta.length ? ` · длина ${meta.length}` : ""}
         </span>
       );
     }
     return (
       <span className="text-[11px] text-ink-400">
-        stored: <span className="font-mono text-ink-200">{String(meta.value ?? "")}</span>
+        сохранено: <span className="font-mono text-ink-200">{String(meta.value ?? "")}</span>
       </span>
     );
   }
-  return <span className="text-[11px] text-ink-500">not set</span>;
+  return <span className="text-[11px] text-ink-500">не задано</span>;
 }
 
 // ---------------------------------------------------------------------------
@@ -233,14 +233,14 @@ export function ProviderCard({ provider, adminToken, vaultEnabled, onUpdated }: 
 
   async function doSave(thenTest: boolean) {
     if (!vaultEnabled) {
-      toast.error("Vault disabled", {
-        description: "MASTER_ENCRYPTION_KEY is not set on the backend.",
+      toast.error("Хранилище выключено", {
+        description: "На бэкенде не задан MASTER_ENCRYPTION_KEY.",
       });
       return;
     }
     const payload = buildPayload();
     if (Object.keys(payload).length === 0) {
-      toast.error("Nothing to save", { description: "Fill at least one field." });
+      toast.error("Нечего сохранять", { description: "Заполните хотя бы одно поле." });
       return;
     }
     setBusy(thenTest ? "save_test" : "save");
@@ -248,14 +248,14 @@ export function ProviderCard({ provider, adminToken, vaultEnabled, onUpdated }: 
       const updated = await vaultApi.save(provider.provider, payload, adminToken);
       clearInputs();
       onUpdated(updated);
-      toast.success(`Saved ${updated.label}`, {
-        description: "Encrypted and stored. The value is not echoed back.",
+      toast.success(`Готово: сохранено — ${updated.label}`, {
+        description: "Зашифровано и сохранено. Значение обратно не показывается.",
       });
       if (thenTest) {
         await doTest();
       }
     } catch (err) {
-      handleError(err, "Save failed");
+      handleError(err, "Не удалось сохранить");
     } finally {
       setBusy(null);
     }
@@ -281,13 +281,13 @@ export function ProviderCard({ provider, adminToken, vaultEnabled, onUpdated }: 
           : tone === "info"
           ? toast.info
           : toast.error;
-      fn(`Tested ${provider.label}`, {
+      fn(`Проверено: ${provider.label}`, {
         description: item.message || item.status,
       });
       const refreshed = await vaultApi.get(provider.provider, adminToken);
       onUpdated(refreshed);
     } catch (err) {
-      handleError(err, "Test failed");
+      handleError(err, "Ошибка проверки");
     } finally {
       setBusy(null);
     }
@@ -295,22 +295,22 @@ export function ProviderCard({ provider, adminToken, vaultEnabled, onUpdated }: 
 
   async function doDelete(field: VaultFieldStatus) {
     if (field.source !== "vault") {
-      toast.warning("Nothing to delete", {
-        description: "This field is sourced from your environment, not from the vault.",
+      toast.warning("Нечего удалять", {
+        description: "Это поле задано в окружении (.env), а не в хранилище.",
       });
       return;
     }
     const sure = window.confirm(
-      `Delete ${provider.label} / ${field.label}? Encrypted value will be permanently removed.`,
+      `Удалить ${provider.label} / ${field.label}? Зашифрованное значение будет удалено навсегда.`,
     );
     if (!sure) return;
     setBusy("delete");
     try {
       const updated = await vaultApi.delete(provider.provider, field.key_name, adminToken);
       onUpdated(updated);
-      toast.success("Deleted", { description: `${field.label} removed from the vault.` });
+      toast.success("Удалено", { description: `${field.label} удалено из хранилища.` });
     } catch (err) {
-      handleError(err, "Delete failed");
+      handleError(err, "Не удалось удалить");
     } finally {
       setBusy(null);
     }
@@ -319,12 +319,12 @@ export function ProviderCard({ provider, adminToken, vaultEnabled, onUpdated }: 
   function handleError(err: unknown, fallback: string) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg === "admin_token_invalid" || msg === "admin_token_required") {
-      toast.error("Unlock vault", { description: "Admin token is missing or invalid." });
+      toast.error("Разблокируйте хранилище", { description: "Админ-токен не указан или неверный." });
       return;
     }
     if (msg === "vault_disabled") {
-      toast.error("Vault disabled", {
-        description: "MASTER_ENCRYPTION_KEY is not set on the backend.",
+      toast.error("Хранилище выключено", {
+        description: "На бэкенде не задан MASTER_ENCRYPTION_KEY.",
       });
       return;
     }
@@ -332,8 +332,8 @@ export function ProviderCard({ provider, adminToken, vaultEnabled, onUpdated }: 
   }
 
   const lastTested = provider.last_tested_at
-    ? new Date(provider.last_tested_at).toLocaleString()
-    : "never";
+    ? new Date(provider.last_tested_at).toLocaleString("ru-RU")
+    : "никогда";
 
   const SourceIcon =
     provider.status === "valid"
@@ -344,8 +344,8 @@ export function ProviderCard({ provider, adminToken, vaultEnabled, onUpdated }: 
       ? ShieldCheck
       : AlertTriangle;
 
-  const connectVerb = isOllama ? "Connect Ollama" : "Configure";
-  const connectedVerb = "Reconfigure";
+  const connectVerb = isOllama ? "Подключить Ollama" : "Настроить";
+  const connectedVerb = "Изменить";
   const apiKeyField = provider.fields.find((f) => f.is_secret);
 
   return (
@@ -384,11 +384,11 @@ export function ProviderCard({ provider, adminToken, vaultEnabled, onUpdated }: 
                 "outline"
               }
             >
-              {provider.source === "missing" ? "not connected" : `from ${provider.source}`}
+              {provider.source === "missing" ? "не подключено" : `из ${provider.source}`}
             </Badge>
           </div>
           <div className="mt-1 text-[11px] text-ink-500">
-            tested {lastTested}
+            проверено {lastTested}
             {provider.last_test_message && (
               <span className="ml-1 text-ink-400">— {provider.last_test_message}</span>
             )}
@@ -402,7 +402,7 @@ export function ProviderCard({ provider, adminToken, vaultEnabled, onUpdated }: 
         >
           {expanded ? (
             <>
-              <ChevronUp className="h-3.5 w-3.5" /> Hide
+              <ChevronUp className="h-3.5 w-3.5" /> Скрыть
             </>
           ) : (
             <>
@@ -454,7 +454,7 @@ export function ProviderCard({ provider, adminToken, vaultEnabled, onUpdated }: 
                 className="flex w-full items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-[0.18em] text-ink-400 hover:text-ink-200 transition-colors"
               >
                 <Settings2 className="h-3 w-3" />
-                Advanced endpoint settings
+                Дополнительные настройки адреса
                 {showAdvanced ? (
                   <ChevronUp className="h-3 w-3 ml-auto" />
                 ) : (
@@ -464,7 +464,7 @@ export function ProviderCard({ provider, adminToken, vaultEnabled, onUpdated }: 
               {showAdvanced && (
                 <div className="border-t border-white/[0.04] p-3 space-y-3">
                   <p className="text-[11px] text-ink-500 italic">
-                    Most users do not need to change these. Only override if you know your endpoint.
+                    Большинству это менять не нужно. Меняйте, только если знаете свой адрес.
                   </p>
                   {advancedFields.map((field) => (
                     <FieldRow
@@ -499,7 +499,7 @@ export function ProviderCard({ provider, adminToken, vaultEnabled, onUpdated }: 
               ) : (
                 <Save className="h-3.5 w-3.5" />
               )}
-              Save
+              Сохранить
             </Button>
             <Button
               variant="cyan"
@@ -512,7 +512,7 @@ export function ProviderCard({ provider, adminToken, vaultEnabled, onUpdated }: 
               ) : (
                 <PlayCircle className="h-3.5 w-3.5" />
               )}
-              Save & Test
+              Сохранить и проверить
             </Button>
             <Button
               variant="outline"
@@ -525,7 +525,7 @@ export function ProviderCard({ provider, adminToken, vaultEnabled, onUpdated }: 
               ) : (
                 <PlayCircle className="h-3.5 w-3.5" />
               )}
-              Test
+              Проверить
             </Button>
             {apiKeyField?.source === "vault" && (
               <Button
@@ -533,9 +533,9 @@ export function ProviderCard({ provider, adminToken, vaultEnabled, onUpdated }: 
                 size="sm"
                 onClick={() => doDelete(apiKeyField)}
                 disabled={busy !== null}
-                title="Remove the saved API key from the vault"
+                title="Удалить сохранённый ключ из хранилища"
               >
-                <Trash2 className="h-3.5 w-3.5" /> Disconnect
+                <Trash2 className="h-3.5 w-3.5" /> Отключить
               </Button>
             )}
           </div>
@@ -561,7 +561,7 @@ function OllamaPresetPicker({
   return (
     <div>
       <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-ink-400 mb-1.5">
-        Choose how you run Ollama
+        Как вы запускаете Ollama
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
         {OLLAMA_PRESETS.map((p) => {
@@ -582,7 +582,7 @@ function OllamaPresetPicker({
             >
               <div className="flex items-center gap-2 text-[12px] font-medium text-ink-50">
                 {p.label}
-                {active && <Badge variant="violet">selected</Badge>}
+                {active && <Badge variant="violet">выбрано</Badge>}
               </div>
               <p className="mt-1 text-[11px] text-ink-400 leading-snug">{p.description}</p>
             </button>
@@ -591,7 +591,7 @@ function OllamaPresetPicker({
       </div>
       {selected === "custom" && (
         <p className="mt-2 text-[11px] text-accent-amber">
-          Custom endpoint mode — set your base URL under Advanced settings below.
+          Свой адрес — укажите его в дополнительных настройках ниже.
         </p>
       )}
     </div>
@@ -628,7 +628,7 @@ function FieldRow({
             {required && <span className="text-accent-rose ml-0.5">*</span>}
             {presetOptional && (
               <span className="ml-1.5 text-[10px] uppercase tracking-wide text-ink-500">
-                optional
+                необязательно
               </span>
             )}
           </label>
@@ -637,7 +637,7 @@ function FieldRow({
           </div>
         </div>
         <Badge variant={SOURCE_VARIANT[field.source] ?? "outline"}>
-          {field.source === "missing" ? "not set" : field.source}
+          {field.source === "missing" ? "не задано" : field.source}
         </Badge>
       </div>
       <div className="mt-2 flex gap-2">
@@ -646,7 +646,7 @@ function FieldRow({
           type={field.is_secret ? "password" : "text"}
           placeholder={
             field.source === "vault" || field.source === "env"
-              ? "•••••• configured — type to replace"
+              ? "•••••• задано — введите, чтобы заменить"
               : field.placeholder
           }
           autoComplete="off"
@@ -661,7 +661,7 @@ function FieldRow({
             variant="outline"
             size="sm"
             onClick={onDelete}
-            title="Remove this stored secret"
+            title="Удалить сохранённое значение"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -672,7 +672,7 @@ function FieldRow({
       )}
       {field.source === "env" && (
         <div className="mt-1.5 text-[11px] text-ink-500 italic">
-          Already configured outside the vault. Remove it from your environment to manage it here.
+          Уже задано вне хранилища (в .env). Уберите из окружения, чтобы управлять здесь.
         </div>
       )}
     </div>

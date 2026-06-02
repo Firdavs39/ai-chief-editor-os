@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Toaster } from "sonner";
 import { Sidebar } from "@/components/layout/sidebar";
 import { MockModePill } from "@/components/feature/mock-mode-pill";
 import { ApiConnectionBadge } from "@/components/feature/api-connection-badge";
@@ -22,6 +23,10 @@ export default async function AppLayout({
       <div className="app-shell flex min-h-screen text-ink-100">
         <Sidebar />
         <main className="flex min-h-screen min-w-0 flex-1 flex-col">{children}</main>
+        {/* Global toast host. Mounted once here so every action (создать,
+           одобрить, сохранить и т.д.) shows feedback, even on pages that did
+           not previously mount their own <Toaster>. */}
+        <Toaster theme="dark" position="top-right" richColors closeButton />
         <MockModePill active={status.mock_mode} />
         {/* Connection badge: hidden on mobile to avoid colliding with
            sticky action bars (EditorApprovalBar etc.). Status info is

@@ -51,57 +51,57 @@ export function FirstPostChecklist({
   const steps: Step[] = [
     {
       key: "1",
-      label: "Live Mode flag enabled",
+      label: "Включён боевой режим",
       done: liveOn,
-      hint: "Set LIVE_MODE=true in .env once you're ready to leave demo.",
+      hint: "Поставьте LIVE_MODE=true в .env, когда будете готовы выйти из демо.",
     },
     {
       key: "2",
-      label: "LLM provider ready",
+      label: "Модель готова",
       done: itemOk("llm.provider"),
-      hint: "Mock provider counts. For real, set ANTHROPIC_API_KEY or OPENAI_API_KEY.",
+      hint: "Заглушка тоже считается. Для реальной — задайте ANTHROPIC_API_KEY или OPENAI_API_KEY.",
     },
     {
       key: "3",
-      label: "At least one enabled source",
+      label: "Есть хотя бы один включённый источник",
       done: sourceReady,
-      hint: "Add a source on /sources or run /demo/seed.",
+      hint: "Добавьте источник в разделе Источники или запустите демо-данные.",
     },
     {
       key: "4",
-      label: "Candidate generated",
+      label: "Создан хотя бы один пост",
       done: hasCandidate,
-      hint: "Use /editor or POST /brief/generate.",
+      hint: "Нажмите «Создать пост» в Редакторе.",
     },
     {
       key: "5",
-      label: "Publisher configured (Telegram bot or Postiz)",
+      label: "Настроена публикация (бот Telegram или Postiz)",
       done: tgReady || postizReady,
-      hint: "Bot API for Telegram or Postiz for Threads/Reddit.",
+      hint: "Бот Telegram или Postiz для Threads/Reddit.",
     },
     {
       key: "6",
-      label: "Dry-run preview reviewed",
+      label: "Просмотрена тестовая публикация",
       done: hasDryRun || dryRun,
-      hint: "Use the Dry-run preview button in the editor.",
+      hint: "Кнопка «Проверить (без отправки)» в редакторе поста.",
     },
     {
       key: "7",
-      label: "ApprovalDecision created",
+      label: "Есть хотя бы одно одобрение",
       done: hasApproved,
-      hint: "Approve from the Approval Board.",
+      hint: "Одобрите пост на доске.",
     },
     {
       key: "8",
-      label: "PUBLISHING_ENABLED=true (intentionally)",
+      label: "PUBLISHING_ENABLED=true (осознанно)",
       done: publishing,
-      hint: "Flip this last. Until then approved jobs stay blocked.",
+      hint: "Включайте в последнюю очередь. До этого одобренные посты ждут.",
     },
     {
       key: "9",
-      label: "First real publish dispatched",
+      label: "Первая реальная публикация отправлена",
       done: hasPublished && publishing && !dryRun,
-      hint: "Worker dispatches with all gates green.",
+      hint: "Отправляется, когда все проверки зелёные.",
     },
   ];
 
@@ -112,7 +112,7 @@ export function FirstPostChecklist({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <ListChecks className="h-4 w-4 text-accent-violet" />
-          <span className="text-sm font-medium text-ink-50">First real post — checklist</span>
+          <span className="text-sm font-medium text-ink-50">Чек-лист первой публикации</span>
         </div>
         <Badge variant={completed === steps.length ? "mint" : "violet"}>
           {completed}/{steps.length}

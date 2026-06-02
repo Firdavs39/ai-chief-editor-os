@@ -16,12 +16,14 @@ export function ApprovalActions({ candidate }: { candidate: Candidate }) {
     setBusy(true);
     try {
       await api.approve(candidate.id, { reason: "approved from board", platform: "telegram" });
-      toast.success("Approved & scheduled", {
-        description: "Кандидат поставлен в очередь публикации.",
+      toast.success("Готово: пост одобрен", {
+        description: "Пост поставлен в очередь на публикацию.",
       });
       router.refresh();
     } catch {
-      toast.error("Approval failed", { description: "API недоступен. Проверь, что бэкенд запущен." });
+      toast.error("Ошибка: не удалось одобрить", {
+        description: "Сервер недоступен. Проверьте подключение и попробуйте ещё раз.",
+      });
     } finally {
       setBusy(false);
     }
@@ -31,10 +33,12 @@ export function ApprovalActions({ candidate }: { candidate: Candidate }) {
     setBusy(true);
     try {
       await api.reject(candidate.id, { reason: "rejected from board" });
-      toast.success("Rejected");
+      toast.success("Готово: пост отклонён");
       router.refresh();
     } catch {
-      toast.error("Reject failed");
+      toast.error("Ошибка: не удалось отклонить", {
+        description: "Сервер недоступен. Попробуйте ещё раз.",
+      });
     } finally {
       setBusy(false);
     }
@@ -49,7 +53,7 @@ export function ApprovalActions({ candidate }: { candidate: Candidate }) {
         onClick={approve}
         className="flex-1 text-accent-mint hover:bg-accent-mint/10"
       >
-        <CheckCircle2 className="h-3.5 w-3.5" /> Approve
+        <CheckCircle2 className="h-3.5 w-3.5" /> {busy ? "…" : "Одобрить"}
       </Button>
       <Button
         size="sm"
@@ -58,7 +62,7 @@ export function ApprovalActions({ candidate }: { candidate: Candidate }) {
         onClick={reject}
         className="flex-1 text-accent-rose hover:bg-accent-rose/10"
       >
-        <XCircle className="h-3.5 w-3.5" /> Reject
+        <XCircle className="h-3.5 w-3.5" /> Отклонить
       </Button>
     </div>
   );

@@ -67,22 +67,28 @@ def _make_run(session, cluster_id: str | None = None) -> GenerationRun:
 
 
 def test_step_sequence_order_and_count() -> None:
+    # Role refactor: style_dna_editor DROPPED, fact_checker ADDED between
+    # editor_in_chief_draft and quality_judge. Net step count unchanged (11).
     expected = (
         "research_analyst",
         "trend_strategist",
         "audience_psychology_analyst",
-        "style_dna_editor",
         "platform_writer_telegram",
         "platform_writer_threads",
         "platform_writer_reddit",
         "critic_red_team",
         "editor_in_chief_draft",
+        "fact_checker",
         "quality_judge",
         "finalizer",
     )
     assert expected == STEP_NAMES
     assert TOTAL_STEPS == 11
     assert len(STEP_SEQUENCE) == 11
+    # style_dna_editor must be gone; fact_checker must sit before quality_judge.
+    assert "style_dna_editor" not in STEP_NAMES
+    assert STEP_NAMES.index("fact_checker") == STEP_NAMES.index("editor_in_chief_draft") + 1
+    assert STEP_NAMES.index("fact_checker") < STEP_NAMES.index("quality_judge")
 
 
 def test_finalizer_is_not_an_llm_step() -> None:
@@ -178,9 +184,11 @@ def test_capabilities_for_all_providers() -> None:
 
 
 def test_options_for_step_uses_judge_temperature_when_judge() -> None:
+    # Per-role temperature (audit refactor): writer band is 0.6, evaluator
+    # band (critic / fact_checker / quality_judge) is 0.2.
     creative = options_for_step("ollama", "platform_writer_telegram", is_judge=False)
     judge = options_for_step("ollama", "quality_judge", is_judge=True)
-    assert creative.temperature == 0.7
+    assert creative.temperature == 0.6
     assert judge.temperature == 0.2
     assert creative.step_name == "platform_writer_telegram"
     assert judge.step_name == "quality_judge"
@@ -462,12 +470,12 @@ def test_full_mock_workflow_persists_all_eleven_artifacts(client, session) -> No
         "research_brief",
         "angle",
         "psych",
-        "voice_brief",
         "tg_post",
         "threads_post",
         "reddit_post",
         "critic_report",
         "final_brief",
+        "fact_check",
         "quality_report",
         "candidate_link",
     }

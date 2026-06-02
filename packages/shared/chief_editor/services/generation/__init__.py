@@ -21,7 +21,15 @@ import logging
 
 from sqlmodel import Session, select
 
-from ...models import GenerationRun, SystemLog, TrendCluster
+from ...models import (
+    ChannelSource,
+    GenerationRun,
+    RawItem,
+    SystemLog,
+    TrendCluster,
+    TrendSignal,
+)
+from ..channels import get_default_channel
 from .steps import STEP_SEQUENCE, TOTAL_STEPS
 from .workflow import advance_one_step, run_to_completion_for_tests
 
@@ -31,12 +39,45 @@ log = logging.getLogger("chief_editor.generation")
 _VALID_REQUESTERS = {"api", "worker", "manual"}
 
 
+def _top_cluster_ids_for_channel(
+    session: Session, channel_id: str | None, top_n: int
+) -> list[str]:
+    """Top-N cluster ids by total_score, filtered to a channel's sources.
+
+    When `channel_id` is None (no channel context at all), returns the global
+    top-N — single-channel behaviour. When a channel is given, only clusters
+    that have at least one signal originating from a raw item produced by one
+    of the channel's linked sources are eligible. This keeps channel A's runs
+    from being seeded by channel B's source pool.
+    """
+    if channel_id is None:
+        rows = session.exec(
+            select(TrendCluster)
+            .order_by(TrendCluster.total_score.desc())
+            .limit(top_n)
+        ).all()
+        return [c.id for c in rows]
+
+    rows = session.exec(
+        select(TrendCluster.id)
+        .join(TrendSignal, TrendSignal.cluster_id == TrendCluster.id)
+        .join(RawItem, RawItem.id == TrendSignal.raw_item_id)
+        .join(ChannelSource, ChannelSource.source_id == RawItem.source_id)
+        .where(ChannelSource.channel_id == channel_id)
+        .group_by(TrendCluster.id)
+        .order_by(TrendCluster.total_score.desc())
+        .limit(top_n)
+    ).all()
+    return list(rows)
+
+
 def enqueue_run(
     session: Session,
     *,
     cluster_id: str | None = None,
     top_n: int = 1,
     requested_by: str = "api",
+    channel_id: str | None = None,
 ) -> list[GenerationRun]:
     """Create one or more queued `GenerationRun` rows. No LLM call.
 
@@ -51,6 +92,10 @@ def enqueue_run(
             queue depth manageable.
         requested_by: one of {"api", "worker", "manual"}. Anything else
             is coerced to "api".
+        channel_id: target channel for the run(s). When None, the default
+            channel is resolved (so every run is channel-stamped once the
+            migration has run). When `cluster_id` is None, the top-cluster
+            selection is filtered to the channel's source pool.
 
     Returns:
         List of newly created GenerationRun rows (already committed).
@@ -60,22 +105,26 @@ def enqueue_run(
 
     top_n = max(1, min(int(top_n or 1), 10))
 
+    # Resolve the channel: explicit > default. May still be None on a brand-new
+    # deployment where the migration hasn't created a default channel yet; in
+    # that case runs are created with channel_id=NULL and the workflow falls
+    # back to single-channel behaviour.
+    if channel_id is None:
+        default_channel = get_default_channel(session)
+        channel_id = default_channel.id if default_channel else None
+
     if cluster_id:
         cluster_ids: list[str | None] = [cluster_id]
     else:
-        clusters = list(
-            session.exec(
-                select(TrendCluster)
-                .order_by(TrendCluster.total_score.desc())
-                .limit(top_n)
-            ).all()
+        cluster_ids = list(
+            _top_cluster_ids_for_channel(session, channel_id, top_n)
         )
-        cluster_ids = [c.id for c in clusters]
 
     runs: list[GenerationRun] = []
     for cid in cluster_ids:
         run = GenerationRun(
             cluster_id=cid,
+            channel_id=channel_id,
             requested_by=requested_by,
             status="queued",
             current_step="",

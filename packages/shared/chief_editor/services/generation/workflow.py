@@ -35,6 +35,8 @@ from ...llm import get_llm_provider
 from ...llm.base import LLMProvider
 from ...llm.registry import get_fallback_llm_provider
 from ...models import (
+    Channel,
+    ChannelSource,
     GenerationArtifact,
     GenerationRun,
     GenerationStep,
@@ -46,11 +48,12 @@ from ...models import (
 )
 from ...settings import get_settings
 from ...time_utils import utcnow
+from ..channels import get_default_channel
 from . import prompts
 from .artifacts import get_run_artifacts_by_name, validate_payload
 from .finalizer import finalize_candidate
 from .provider_capabilities import options_for_step
-from .steps import STEP_SEQUENCE, StepDef
+from .steps import STEP_SEQUENCE, WRITER_PLATFORMS, StepDef
 
 log = logging.getLogger("chief_editor.generation.workflow")
 
@@ -62,7 +65,34 @@ _TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
 # ---------------------------------------------------------------------------
 
 
-def _load_style(session: Session) -> StyleProfile | None:
+def _resolve_channel(session: Session, run: GenerationRun) -> Channel | None:
+    """Resolve the run's channel: explicit FK → default channel → None.
+
+    Legacy runs (`channel_id` NULL) fall back to the default channel so the
+    correct style/sources are still used. Brand-new deployments with no
+    default channel yet return None and the caller uses single-channel
+    behaviour (default style profile, unfiltered raw items).
+    """
+    if run.channel_id:
+        channel = session.get(Channel, run.channel_id)
+        if channel is not None:
+            return channel
+    return get_default_channel(session)
+
+
+def _load_style(session: Session, run: GenerationRun) -> StyleProfile | None:
+    """Load the style profile for this run's channel.
+
+    Resolution order:
+      1. run.channel_id → Channel.style_profile_id
+      2. default channel → its style_profile_id
+      3. StyleProfile where name == "default" (legacy single-channel fallback)
+    """
+    channel = _resolve_channel(session, run)
+    if channel is not None and channel.style_profile_id:
+        profile = session.get(StyleProfile, channel.style_profile_id)
+        if profile is not None:
+            return profile
     return session.exec(
         select(StyleProfile).where(StyleProfile.name == "default")
     ).first()
@@ -74,19 +104,99 @@ def _load_cluster(session: Session, run: GenerationRun) -> TrendCluster | None:
     return session.get(TrendCluster, run.cluster_id)
 
 
-def _load_raw_items(
-    session: Session, cluster: TrendCluster | None, limit: int = 5
-) -> list[RawItem]:
-    if cluster is None:
-        return []
-    return list(
+def _channel_source_ids(session: Session, run: GenerationRun) -> set[str] | None:
+    """Source ids linked to the run's channel, or None for no filtering.
+
+    Returns None when the run has no resolvable channel (legacy/NULL with no
+    default) — callers then keep the unfiltered single-channel behaviour.
+    """
+    channel = _resolve_channel(session, run)
+    if channel is None:
+        return None
+    return set(
         session.exec(
-            select(RawItem)
-            .join(TrendSignal, TrendSignal.raw_item_id == RawItem.id)
-            .where(TrendSignal.cluster_id == cluster.id)
-            .limit(limit)
+            select(ChannelSource.source_id).where(
+                ChannelSource.channel_id == channel.id
+            )
         ).all()
     )
+
+
+def _load_raw_items(
+    session: Session,
+    cluster: TrendCluster | None,
+    *,
+    run: GenerationRun,
+    limit: int = 5,
+) -> list[RawItem]:
+    """Raw items backing the cluster, restricted to the channel's sources.
+
+    Filtering by the channel's source pool prevents another channel's context
+    from leaking into this channel's prompts. When the run has no resolvable
+    channel (legacy NULL with no default), no filter is applied and the prior
+    single-channel behaviour is preserved.
+    """
+    if cluster is None:
+        return []
+
+    stmt = (
+        select(RawItem)
+        .join(TrendSignal, TrendSignal.raw_item_id == RawItem.id)
+        .where(TrendSignal.cluster_id == cluster.id)
+    )
+    source_ids = _channel_source_ids(session, run)
+    if source_ids is not None:
+        if not source_ids:
+            # Channel exists but has no linked sources → nothing to feed the
+            # prompt from this channel's pool. Return empty rather than leak
+            # the whole cluster's items.
+            return []
+        stmt = stmt.where(RawItem.source_id.in_(source_ids))  # type: ignore[attr-defined]
+
+    return list(session.exec(stmt.limit(limit)).all())
+
+
+def _target_platforms(session: Session, run: GenerationRun) -> set[str] | None:
+    """Outbound platforms this run should write for, or None for "all writers".
+
+    Platform-scoped generation: a channel writes content ONLY for its own
+    platform. A Telegram channel (`Channel.platform == "telegram"`) yields
+    ``{"telegram"}`` and the workflow SKIPS the Threads/Reddit writer steps
+    (no LLM call) — they are a pure cost + failure surface for a platform the
+    channel never publishes to.
+
+    Returns None (→ run every writer, the legacy behaviour) when EITHER:
+    - the run has no resolvable channel (legacy `channel_id` NULL with no
+      default channel), OR
+    - the resolved channel's `platform` is not one of the recognized writer
+      platforms (an unknown/future value we have no dedicated writer for).
+
+    `Channel.platform` is a single value today; this returns a SET so the
+    same call site keeps working if a channel later declares several
+    platforms. The step COUNT is never affected — skipping is in-place.
+    """
+    channel = _resolve_channel(session, run)
+    if channel is None:
+        return None
+    platform = (channel.platform or "").strip().lower()
+    if platform not in WRITER_PLATFORMS:
+        # Unrecognized / unset platform → no scoping, run all writers.
+        return None
+    return {platform}
+
+
+def _empty_artifact_payload(artifact_name: str) -> dict[str, Any]:
+    """Schema-valid placeholder payload for a skipped writer step.
+
+    A skipped writer still persists ONE artifact (so artifact counts and the
+    downstream `artifacts.get(name, {})` lookups stay stable), but the payload
+    is the artifact model's own defaults — every string empty, every list
+    empty. This is validated through the same `validate_payload` path as a
+    real step, so it satisfies the "payload keys are a subset of schema
+    fields" persistence contract. It carries NO model output (there was no
+    LLM call) and NO out-of-schema marker keys.
+    """
+    return validate_payload(artifact_name, {})
 
 
 def _model_name_for(provider_name: str) -> str:
@@ -128,6 +238,7 @@ def _build_user_prompt(
     raw_items: list[RawItem],
     artifacts: dict[str, dict],
     style: StyleProfile | None,
+    target_platforms: set[str] | None = None,
 ) -> str:
     builder = step_def.user_builder_name
     if builder == "research_analyst":
@@ -136,8 +247,6 @@ def _build_user_prompt(
         return prompts.user_trend_strategist(cluster, artifacts)
     if builder == "audience_psychology":
         return prompts.user_audience_psychology(artifacts, style)
-    if builder == "style_dna_editor":
-        return prompts.user_style_dna_editor(artifacts, style)
     if builder == "platform_writer_telegram":
         return prompts.user_platform_writer(artifacts, "Telegram", style=style)
     if builder == "platform_writer_threads":
@@ -147,7 +256,13 @@ def _build_user_prompt(
     if builder == "critic_red_team":
         return prompts.user_critic_red_team(artifacts)
     if builder == "editor_in_chief_draft":
-        return prompts.user_editor_in_chief_draft(artifacts)
+        # The editor only assembles the platforms the channel targets; skipped
+        # writers' empty placeholder artifacts are dropped from the prompt.
+        return prompts.user_editor_in_chief_draft(
+            artifacts, target_platforms=target_platforms
+        )
+    if builder == "fact_checker":
+        return prompts.user_fact_checker(artifacts)
     if builder == "quality_judge":
         return prompts.user_quality_judge(artifacts)
     raise RuntimeError(f"unknown user_builder_name '{builder}'")
@@ -400,9 +515,9 @@ def _execute_llm_step(
     over.
     """
     primary = get_llm_provider()
-    style = _load_style(session)
+    style = _load_style(session, run)
     cluster = _load_cluster(session, run)
-    raw_items = _load_raw_items(session, cluster, limit=5)
+    raw_items = _load_raw_items(session, cluster, run=run, limit=5)
     artifacts = get_run_artifacts_by_name(session, run)
 
     if step_def.system_builder is None or step_def.schema is None:
@@ -416,13 +531,27 @@ def _execute_llm_step(
         raw_items=raw_items,
         artifacts=artifacts,
         style=style,
+        target_platforms=_target_platforms(session, run),
     )
     options = options_for_step(
         primary.name, step_def.name, is_judge=step_def.is_judge
     )
-    temperature = (
-        options.temperature if options.temperature is not None else 0.7
-    )
+    # Temperature resolution: the mock provider always wins with its
+    # deterministic temperatures (options.temperature == 0.0) so tests stay
+    # reproducible. For real providers, the per-role band declared on the
+    # StepDef is authoritative (writer 0.6 / evaluator 0.2 / analyst 0.3);
+    # options_for_step already returns the same value, but preferring the
+    # StepDef keeps STEP_SEQUENCE the single source of truth.
+    if primary.name == "mock":
+        temperature = (
+            options.temperature if options.temperature is not None else 0.0
+        )
+    else:
+        temperature = (
+            step_def.role_temperature
+            if step_def.role_temperature is not None
+            else (options.temperature if options.temperature is not None else 0.7)
+        )
 
     def _usage_for(provider: LLMProvider, used_fallback: bool) -> dict[str, Any]:
         return {
@@ -573,8 +702,38 @@ def advance_one_step(session: Session, run: GenerationRun) -> GenerationRun:
         session.commit()
         return run
 
+    # Platform scoping: skip a writer step whose platform the run's channel
+    # does not target. Decided BEFORE the LLM call (and AFTER the cancellation
+    # re-check above) so a Telegram-only channel never pays for the Threads /
+    # Reddit writers. The step still records as `succeeded` with an empty
+    # schema-valid artifact and tokens None — the count of steps/artifacts is
+    # unchanged, only the LLM work is elided. None platform (non-writer steps)
+    # and a None target set (legacy/unrecognized → run all writers) both fall
+    # through to normal execution.
+    target_platforms = _target_platforms(session, run)
+    skip_writer = (
+        step_def.platform is not None
+        and target_platforms is not None
+        and step_def.platform not in target_platforms
+    )
+
     try:
-        if step_def.is_llm:
+        if skip_writer:
+            payload = _empty_artifact_payload(step_def.artifact_name)
+            usage = {
+                "tokens_in": None,
+                "tokens_out": None,
+                "model": None,
+                "used_fallback": False,
+            }
+            log.info(
+                "generation.step.skipped step=%s platform=%s run_id=%s "
+                "reason=channel_platform_mismatch",
+                step_def.name,
+                step_def.platform,
+                run.id,
+            )
+        elif step_def.is_llm:
             payload, usage = _execute_llm_step(session, run, step_def)
         else:
             payload = _execute_finalizer_step(session, run)

@@ -11,6 +11,8 @@ from sqlmodel import Session, delete, select
 from ..db import init_db, session_scope
 from ..models import (
     ApprovalDecision,
+    Channel,
+    ChannelSource,
     MetricSnapshot,
     PostCandidate,
     PublishJob,
@@ -25,6 +27,7 @@ from ..models import (
 from ..time_utils import utcnow
 from .approval import approve_and_schedule
 from .candidate import generate_for_cluster
+from .channels import ensure_default_channel
 from .pipeline import recluster, run_collection_for_source
 
 _DEMO_SOURCES = [
@@ -116,7 +119,7 @@ def _wipe(session: Session) -> None:
     for model in (
         PublishResult, PublishJob, ApprovalDecision, PostCandidate,
         TrendSignal, TrendCluster, RawItem, MetricSnapshot,
-        SystemLog, Source, StyleProfile,
+        SystemLog, ChannelSource, Channel, Source, StyleProfile,
     ):
         session.exec(delete(model))
     session.commit()
@@ -287,6 +290,11 @@ def run_seed() -> dict:
             _seed_publish_history(session, candidates)
             _seed_metrics(session, candidates, sources)
             _seed_logs(session)
+
+            # Multi-channel migration: create the default channel, link all
+            # seeded sources to it, and backfill channel_id on the candidates
+            # just generated. Idempotent.
+            ensure_default_channel(session)
 
             return {
                 "sources": len(sources),

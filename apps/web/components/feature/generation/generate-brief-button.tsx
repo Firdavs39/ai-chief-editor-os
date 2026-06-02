@@ -18,20 +18,23 @@ type Props = {
 };
 
 /**
- * "Запустить Quality Brief" button.
+ * Кнопка "Создать пост".
  *
- * Behaviour:
- * - If not unlocked: opens an inline operator-token prompt. The token is
- *   stored only in React memory via `useOperatorToken`.
- * - If unlocked: POSTs /generation-runs with the optional cluster_id,
- *   then routes to /editor/runs/{run_id}.
- * - On 401 (admin_token_invalid): locks the context and re-shows the
- *   prompt. The token is never written to localStorage / sessionStorage
- *   / cookies / URL.
+ * Поведение:
+ * - Если не разблокировано: открывает окно ввода админ-токена. Токен
+ *   хранится ТОЛЬКО в памяти React через `useOperatorToken`.
+ * - Если разблокировано: POST /generation-runs с опциональным cluster_id,
+ *   затем переход на /editor/runs/{run_id}.
+ * - При 401 (токен отклонён): сбрасывает токен и снова показывает окно.
+ *   Токен НИКОГДА не пишется в localStorage / sessionStorage / cookies / URL.
+ *
+ * Важно для UX: генерация поста реально занимает ~15–40 минут (живая модель
+ * на бэке). После запуска показываем понятный тост, чтобы владелец не думал,
+ * что "просто перешло и ничего не происходит".
  */
 export function GenerateBriefButton({
   clusterId,
-  label = "Запустить Quality Brief",
+  label = "Создать пост",
   size = "sm",
 }: Props) {
   const router = useRouter();
@@ -49,13 +52,15 @@ export function GenerateBriefButton({
       );
       const newRun = res.runs[0];
       if (!newRun) {
-        toast.error("Не удалось создать run", {
-          description: "Сервер не вернул ни одного run_id.",
+        toast.error("Ошибка: пост не создан", {
+          description: "Сервер не вернул задачу. Попробуйте ещё раз.",
         });
         return;
       }
-      toast.success("Run в очереди", {
-        description: "Открываю timeline…",
+      toast.success("Пост генерируется", {
+        description:
+          "Это занимает ~15–40 минут. Вкладку можно закрыть — прогресс не потеряется. Готовый пост появится в разделе Редактор.",
+        duration: 12000,
       });
       router.push(`/editor/runs/${newRun.id}`);
     } catch (err) {
@@ -63,12 +68,12 @@ export function GenerateBriefButton({
       if (msg === "admin_token_invalid" || msg === "admin_token_required") {
         lock();
         setOpen(true);
-        toast.error("Operator unlock required", {
-          description: "Admin token отклонён сервером — введи новый.",
+        toast.error("Сначала введите админ-токен", {
+          description: "Токен отклонён сервером — введите правильный (ADMIN_TOKEN из .env).",
         });
         return;
       }
-      toast.error("Не удалось запустить run", {
+      toast.error("Ошибка: не удалось создать пост", {
         description: msg.slice(0, 200),
       });
     } finally {
@@ -87,7 +92,9 @@ export function GenerateBriefButton({
   async function handleUnlockAndRun() {
     const t = tokenInputRef.current?.value?.trim() ?? "";
     if (!t) {
-      toast.error("Введи admin token");
+      toast.error("Введите админ-токен", {
+        description: "Возьмите его из .env (поле ADMIN_TOKEN).",
+      });
       return;
     }
     unlock(t);
@@ -105,7 +112,7 @@ export function GenerateBriefButton({
         disabled={busy}
       >
         <Sparkles className="h-4 w-4" />
-        {busy ? "Запускаю…" : label}
+        {busy ? "Создаю…" : label}
       </Button>
 
       {open && !unlocked && (
@@ -113,21 +120,25 @@ export function GenerateBriefButton({
           <Card className="w-full max-w-md p-5 space-y-3">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-ink-50">
-                Operator unlock
+                Сначала введите админ-токен
               </span>
-              <Badge variant="outline">memory-only</Badge>
+              <Badge variant="outline">только в памяти</Badge>
             </div>
             <p className="text-[12px] text-ink-300 leading-relaxed">
-              Quality Brief вызывает реальный LLM на бэке. Введи admin token —
-              он останется только в памяти этой страницы и сотрётся при
-              refresh.
+              Создание поста запускает живую модель на сервере. Введите
+              админ-токен (из файла .env, поле ADMIN_TOKEN). Он останется только
+              в памяти этой вкладки и сотрётся при обновлении страницы.
+            </p>
+            <p className="text-[12px] text-accent-cyan leading-relaxed">
+              Генерация занимает ~15–40 минут. Вкладку можно закрыть — прогресс
+              не потеряется.
             </p>
             <Input
               ref={tokenInputRef}
               type="password"
               autoComplete="off"
               spellCheck={false}
-              placeholder="X-Admin-Token"
+              placeholder="Админ-токен (ADMIN_TOKEN из .env)"
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -145,12 +156,12 @@ export function GenerateBriefButton({
                 Отмена
               </Button>
               <Button onClick={handleUnlockAndRun} disabled={busy}>
-                Unlock & запустить
+                Разблокировать и создать
               </Button>
             </div>
             <p className="text-[10px] text-ink-500">
-              Токен не сохраняется в localStorage, sessionStorage, cookies или
-              URL.
+              Токен не сохраняется в браузере (ни в localStorage, ни в cookies,
+              ни в ссылке).
             </p>
           </Card>
         </div>

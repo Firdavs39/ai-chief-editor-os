@@ -17,6 +17,7 @@ from .routers import (
     briefs,
     calendar,
     candidates,
+    channels,
     collect,
     demo,
     generation_runs,
@@ -73,6 +74,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(status.router)
 app.include_router(sources.router)
+app.include_router(channels.router)
 app.include_router(trends.router)
 app.include_router(collect.router)
 app.include_router(briefs.router)

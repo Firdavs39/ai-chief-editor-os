@@ -63,7 +63,7 @@ export function HookTypeChart({
           />
           <Tooltip
             {...tooltipStyles}
-            formatter={(v: number) => [`${Math.round(v * 100)}`, "viral score"]}
+            formatter={(v: number) => [`${Math.round(v * 100)}`, "виральность"]}
           />
           <Bar
             dataKey="viral_avg"
@@ -110,7 +110,7 @@ export function LearningTimelineChart({
           />
           <Tooltip
             {...tooltipStyles}
-            formatter={(v: number) => [v.toLocaleString(), "engagement"]}
+            formatter={(v: number) => [v.toLocaleString(), "вовлечение"]}
           />
           <Area
             type="monotone"
@@ -153,7 +153,7 @@ export function SourcePerformanceChart({
           />
           <Tooltip
             {...tooltipStyles}
-            formatter={(v: number) => [v.toLocaleString(), "avg engagement"]}
+            formatter={(v: number) => [v.toLocaleString(), "ср. вовлечение"]}
           />
           <Bar dataKey="avg_engagement" radius={[0, 8, 8, 0]} maxBarSize={20}>
             {data.map((_, i) => (

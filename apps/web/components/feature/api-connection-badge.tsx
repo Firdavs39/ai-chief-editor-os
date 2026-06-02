@@ -14,23 +14,23 @@ const STYLE_FOR: Record<
   }
 > = {
   connected: {
-    label: "API connected",
+    label: "Сервер подключён",
     icon: PlugZap,
     // Border + text color only — solid backdrop comes from the wrapper.
     klass: "border-state-success/40 text-state-success",
   },
   worker_stale: {
-    label: "Worker stale",
+    label: "Процесс молчит",
     icon: AlertTriangle,
     klass: "border-accent-amber/40 text-accent-amber",
   },
   missing_integrations: {
-    label: "Integrations missing",
+    label: "Нет подключений",
     icon: Radio,
     klass: "border-accent-amber/40 text-accent-amber",
   },
   fallback: {
-    label: "Demo fallback",
+    label: "Демо без сервера",
     icon: Plug,
     klass: "border-accent-amber/40 text-accent-amber",
   },
@@ -39,10 +39,10 @@ const STYLE_FOR: Record<
 export function ApiConnectionBadge({ connection }: { connection: ApiConnection }) {
   const style = STYLE_FOR[connection.state];
   const Icon = style.icon;
-  const titleParts = [`API: ${connection.base}`];
-  if (connection.worker_overall) titleParts.push(`worker: ${connection.worker_overall}`);
+  const titleParts = [`Сервер: ${connection.base}`];
+  if (connection.worker_overall) titleParts.push(`фоновый процесс: ${connection.worker_overall}`);
   if (connection.missing && connection.missing.length > 0) {
-    titleParts.push(`missing: ${connection.missing.join(", ")}`);
+    titleParts.push(`не хватает: ${connection.missing.join(", ")}`);
   }
   return (
     <div

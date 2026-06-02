@@ -8,7 +8,6 @@ import {
   Flame,
   Lightbulb,
   Radio,
-  Sparkles,
   Zap,
 } from "lucide-react";
 import { Topbar } from "@/components/layout/topbar";
@@ -17,11 +16,21 @@ import { StatCard } from "@/components/feature/stat-card";
 import { TrendCard } from "@/components/feature/trend-card";
 import { ApprovalCard } from "@/components/feature/approval-card";
 import { CommandHero } from "@/components/feature/command-hero";
+import { GenerateBriefButton } from "@/components/feature/generation/generate-brief-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { data } from "@/lib/data";
 import { formatDateTime } from "@/lib/utils";
+
+const JOB_STATUS_RU: Record<string, string> = {
+  pending: "в очереди",
+  done: "готово",
+  failed: "ошибка",
+  blocked: "заблок.",
+  dry_run: "проверка",
+  pending_config: "нет настроек",
+};
 
 export default async function DashboardPage() {
   const [trends, candidates, jobs, status, analytics] = await Promise.all([
@@ -52,20 +61,18 @@ export default async function DashboardPage() {
   return (
     <>
       <Topbar
-        title="Command Center"
-        subtitle="Сегодняшние сигналы, идеи и активность редакции"
+        title="Главная"
+        subtitle="Сегодняшние сигналы, идеи и работа редакции"
         pill={{
-          label: status.mock_mode ? "Demo Mode" : status.app_env,
+          label: status.mock_mode ? "Демо-режим" : status.app_env,
           tone: status.mock_mode ? "cyan" : "violet",
         }}
         actions={
           <>
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/trends"><Compass className="h-4 w-4" /> Trend Radar</Link>
+              <Link href="/trends"><Compass className="h-4 w-4" /> Тренды →</Link>
             </Button>
-            <Button size="sm" asChild>
-              <Link href="/editor"><Sparkles className="h-4 w-4" /> Generate brief</Link>
-            </Button>
+            <GenerateBriefButton size="sm" label="Создать пост" />
           </>
         }
       />
@@ -78,36 +85,36 @@ export default async function DashboardPage() {
           topTrendTitle={topTrends[0]?.representative_text?.slice(0, 110)}
         />
 
-        <PageSection title="Today" description="Live snapshot of the editorial pipeline">
+        <PageSection title="Сегодня" description="Текущее состояние редакции">
           <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-4 3xl:gap-4">
             <StatCard
               tone="violet"
               icon={Radio}
-              label="Trends today"
+              label="Трендов сегодня"
               value={trends.length}
-              trend={{ direction: "up", delta: "+3 since yesterday" }}
-              hint={`${trends.filter((t) => t.total_score >= 0.7).length} above 70 score`}
+              trend={{ direction: "up", delta: "+3 со вчера" }}
+              hint={`${trends.filter((t) => t.total_score >= 0.7).length} с рейтингом 70+`}
               spark={timeline}
             />
             <StatCard
               icon={CheckCircle2}
-              label="Pending approvals"
+              label="Ждут одобрения"
               value={pendingCount}
-              hint="Awaiting your decision"
+              hint="Нужно ваше решение"
             />
             <StatCard
               icon={CalendarIcon}
-              label="Scheduled posts"
+              label="Запланировано"
               value={analytics.totals.scheduled}
-              hint={`${analytics.totals.published} published this week`}
+              hint={`${analytics.totals.published} опубликовано за неделю`}
             />
             <StatCard
               tone="cyan"
               icon={Activity}
-              label="AI style match"
+              label="Совпадение со стилем"
               value={styleAvg}
-              hint="Average across drafts"
-              trend={{ direction: "up", delta: "+4 vs last week" }}
+              hint="В среднем по черновикам"
+              trend={{ direction: "up", delta: "+4 за неделю" }}
               spark={styleSpark}
             />
           </div>
@@ -115,11 +122,11 @@ export default async function DashboardPage() {
 
         <div className="grid gap-4 lg:gap-5 xl:gap-6 xl:grid-cols-[1.4fr_1fr] 3xl:grid-cols-[1.6fr_1fr]">
           <PageSection
-            title="Today's opportunities"
-            description="High-score clusters worth turning into posts"
+            title="Идеи на сегодня"
+            description="Темы с высоким рейтингом — из них стоит сделать посты"
             action={
               <Button variant="ghost" size="sm" asChild>
-                <Link href="/trends">All trends →</Link>
+                <Link href="/trends">Все тренды →</Link>
               </Button>
             }
           >
@@ -131,11 +138,11 @@ export default async function DashboardPage() {
           </PageSection>
 
           <PageSection
-            title="Pending approvals"
-            description="Drafts the AI suggests you review next"
+            title="Ждут одобрения"
+            description="Черновики, которые ИИ предлагает проверить"
             action={
               <Button variant="ghost" size="sm" asChild>
-                <Link href="/approvals">Board →</Link>
+                <Link href="/approvals">На доску →</Link>
               </Button>
             }
           >
@@ -153,10 +160,10 @@ export default async function DashboardPage() {
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
                   <CalendarIcon className="h-4 w-4 text-accent-cyan" />
-                  Upcoming posts
+                  Ближайшие публикации
                 </CardTitle>
                 <Button variant="ghost" size="sm" asChild>
-                  <Link href="/calendar">Calendar →</Link>
+                  <Link href="/calendar">Календарь →</Link>
                 </Button>
               </div>
             </CardHeader>
@@ -179,7 +186,7 @@ export default async function DashboardPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium text-ink-50">
-                        {cand?.topic ?? "Scheduled post"}
+                        {cand?.topic ?? "Запланированный пост"}
                       </div>
                       <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-400">
                         <Badge variant="outline">{j.platform}</Badge>
@@ -187,7 +194,7 @@ export default async function DashboardPage() {
                       </div>
                     </div>
                     <span className="text-[10px] uppercase tracking-[0.18em] text-ink-500">
-                      {j.status}
+                      {JOB_STATUS_RU[j.status] ?? j.status}
                     </span>
                   </Link>
                 );
@@ -199,7 +206,7 @@ export default async function DashboardPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Lightbulb className="h-4 w-4 text-accent-violet" />
-                Learning insights
+                Что заметил ИИ
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -219,7 +226,7 @@ export default async function DashboardPage() {
               ))}
               <div className="mt-3 flex items-center gap-2 text-[11px] text-ink-500">
                 <Flame className="h-3 w-3 text-accent-violet" />
-                Insights refresh after each new approval / metric snapshot.
+                Выводы обновляются после каждого одобрения и новых метрик.
               </div>
             </CardContent>
           </Card>

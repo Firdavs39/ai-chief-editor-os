@@ -21,6 +21,7 @@ from sqlmodel import Session, select
 from chief_editor.db import get_engine, init_db, session_scope
 from chief_editor.models import (
     ApprovalDecision,
+    Channel,
     GenerationRun,
     PostCandidate,
     PublishJob,
@@ -33,6 +34,7 @@ from chief_editor.models import (
 from chief_editor.publishing import ApprovalRequiredError, get_publisher
 from chief_editor.publishing.mock import MockPublisher
 from chief_editor.services.candidate import generate_for_cluster
+from chief_editor.services.channels import get_default_channel
 from chief_editor.services.dry_run import compute_payload
 from chief_editor.services.generation import advance_one_step
 from chief_editor.services.pipeline import recluster, run_collection_for_source
@@ -248,6 +250,29 @@ async def generation_runs_loop(stop: asyncio.Event) -> None:
             continue
 
 
+def _resolve_target_chat_id(session: Session, cand: PostCandidate) -> str | None:
+    """Resolve the destination chat for a candidate's channel.
+
+    - Candidate has `channel_id` → use that Channel's `target_chat_id`.
+    - Candidate has no channel_id → use the DEFAULT channel's target_chat_id.
+      This is deliberate: a candidate must never silently land in the wrong
+      chat. The default channel is the only acceptable fallback, and only
+      because it is the explicit single-channel destination.
+    - No channel resolvable at all → None (publisher uses its env/Vault
+      target, preserving pre-multi-channel behaviour).
+
+    Returns a public chat id string or None. Never a secret.
+    """
+    channel: Channel | None = None
+    if cand.channel_id:
+        channel = session.get(Channel, cand.channel_id)
+    if channel is None:
+        channel = get_default_channel(session)
+    if channel is None:
+        return None
+    return (channel.target_chat_id or "").strip() or None
+
+
 def _dispatch_one(session: Session, job: PublishJob) -> None:
     """Dispatch a single publish job with all safety gates enforced.
 
@@ -340,8 +365,11 @@ def _dispatch_one(session: Session, job: PublishJob) -> None:
         # Candidate stays approved; do not mark as published.
         return
 
-    # Real publish path.
-    publisher = get_publisher(job.platform)
+    # Real publish path. Resolve the per-channel destination so multi-channel
+    # candidates publish to their own chat (default channel target as the only
+    # fallback). target_chat_id is a public id, never a secret.
+    target_chat_id = _resolve_target_chat_id(session, cand)
+    publisher = get_publisher(job.platform, target_chat_id=target_chat_id)
     # Honesty gate — if Live Mode is on but the resolved publisher is mock,
     # block instead of silently logging to console.
     if (
