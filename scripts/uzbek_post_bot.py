@@ -149,10 +149,21 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     media_note = f" (с {kind})" if kind else ""
     await msg.reply_text(f"⏳ Переделываю на узбекский{media_note}…" + note)
 
+    user_prompt = src
+    if kind:
+        # Медиа идёт ВМЕСТЕ с текстом одним сообщением (подписью). У Telegram
+        # подпись к медиа ≤1024 символов, поэтому при наличии медиа держим
+        # текст компактным — как в оригинальном посте, где он тоже был подписью.
+        user_prompt = (
+            f"{src}\n\n[MUHIM: bu postda rasm/video bor va matn u bilan BIRGA, "
+            f"yagona post sifatida ketadi. Shuning uchun matnni 950 belgidan "
+            f"OSHIRMA (heshteg va @buai_uz bilan birga). Mazmunni saqla, lekin "
+            f"ixcham yoz. Kam HTML ishlat.]"
+        )
     try:
         provider = get_llm_provider()
         result = provider.complete_json(
-            system=SYSTEM, user=src, schema=_SCHEMA, temperature=0.6
+            system=SYSTEM, user=user_prompt, schema=_SCHEMA, temperature=0.6
         )
         uz = (result.get("post") or "").strip()
     except Exception as exc:  # noqa: BLE001
@@ -181,12 +192,11 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def _send(context, chat_id, text, kind, file_id, reply_markup=None, preview=False):
     """Шлёт пост. Медиа ВСЕГДА уходит как медиа — НИКОГДА не пропадает.
 
-    • медиа + короткий текст (≤1024) → медиа с подписью (вместе, 1 сообщение);
-    • медиа + длинный текст (>1024)  → медиа + текст отдельным сообщением.
-      Telegram физически не даёт >1024 символов в подписи к медиа, поэтому
-      длинный текст идёт следом. Главное — медиа не теряется, текст полный.
-    • без медиа                       → обычное сообщение.
-    HTML с безопасным фолбэком на обычный текст при кривой разметке.
+    • медиа (фото/видео) → ВСЕГДА с подписью, ОДНИМ сообщением (вместе);
+    • без медиа          → обычное сообщение.
+    Текст при медиа держим ≤1024 (промпт это обеспечивает); если вдруг длиннее
+    — подпись обрезается до лимита, но медиа и текст ОСТАЮТСЯ вместе. Никогда
+    не разделяем. HTML с безопасным фолбэком на обычный текст.
     """
     text = text[:TEXT_LIMIT]
     senders = {
@@ -196,14 +206,11 @@ async def _send(context, chat_id, text, kind, file_id, reply_markup=None, previe
     }
 
     async def _try(parse_mode):
-        if kind and file_id and len(text) <= CAPTION_LIMIT:
-            await senders[kind](chat_id=chat_id, **{kind: file_id}, caption=text,
+        if kind and file_id:
+            # Медиа + текст ВСЕГДА вместе, одним сообщением (подпись).
+            caption = text if len(text) <= CAPTION_LIMIT else text[:CAPTION_LIMIT]
+            await senders[kind](chat_id=chat_id, **{kind: file_id}, caption=caption,
                                 parse_mode=parse_mode, reply_markup=reply_markup)
-        elif kind and file_id:
-            # Медиа ВСЕГДА уходит первым; длинный текст — следом, полностью.
-            await senders[kind](chat_id=chat_id, **{kind: file_id})
-            await context.bot.send_message(chat_id=chat_id, text=text,
-                                           parse_mode=parse_mode, reply_markup=reply_markup)
         else:
             await context.bot.send_message(chat_id=chat_id, text=text,
                                            parse_mode=parse_mode, reply_markup=reply_markup)
