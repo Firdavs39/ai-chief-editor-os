@@ -22,12 +22,7 @@ from __future__ import annotations
 
 import logging
 
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    LinkPreviewOptions,
-    Update,
-)
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -72,6 +67,9 @@ SYSTEM = (
     "Postning hajmi va toʻliqligi originalga mos boʻlsin. FAQAT begona reklama/"
     "promo olib tashlanadi, qolgan HAMMA maʼlumot toʻliq qoladi. Hech narsa "
     "oʻylab topma, lekin hech narsani ham qisqartirma.\n"
+    "2a. ABZATSLAR TARTIBINI SAQLA: original postdagi abzatslar KETMA-KETLIGINI "
+    "va tuzilishini saqla — abzatslarni joyidan koʻchirma, oʻrnini almashtirma, "
+    "birlashtirma. Ketma-ket, abzatsma-abzats oʻgir.\n"
     "3. OʻZBEKCHA (lotin) tabiiy, jonli til. Quruq tarjima emas, lekin mazmunni "
     "toʻliq saqlagan holda. Birinchi jumla eʼtiborni tortsin.\n"
     "4. CHIROYLI BEZA — skuchli va tussiz EMAS:\n"
@@ -180,30 +178,15 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await _send(context, msg.chat_id, uz, kind, file_id, reply_markup=kb, preview=True)
 
 
-async def _media_url(context, file_id: str) -> str:
-    """Публичный URL медиа на серверах Telegram (для link-preview).
-
-    Виден только серверам Telegram как источник превью — читателям канала
-    эта ссылка не показывается (link_preview_options.url отдельно от текста).
-    """
-    f = await context.bot.get_file(file_id)
-    url = f.file_path or ""
-    if not url.startswith("http"):
-        url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{url}"
-    return url
-
-
 async def _send(context, chat_id, text, kind, file_id, reply_markup=None, preview=False):
-    """Шлёт пост так, чтобы медиа и текст были ВМЕСТЕ, как в оригинале.
+    """Шлёт пост. Медиа ВСЕГДА уходит как медиа — НИКОГДА не пропадает.
 
-    • медиа + короткий текст (≤1024)  → одно медиа-сообщение с подписью;
-    • медиа + длинный текст (>1024)   → link-preview: медиа показывается НАД
-      полным текстом (до 4096) ОДНИМ сообщением. Это приём, которым каналы
-      обходят лимит подписи в 1024 — фото/видео не как подпись, а как превью
-      над текстом;
-    • без медиа                        → обычное сообщение.
-    HTML с безопасным фолбэком на обычный текст; если link-preview не прошёл —
-    в крайнем случае медиа+текст раздельно (чтобы пост вообще ушёл).
+    • медиа + короткий текст (≤1024) → медиа с подписью (вместе, 1 сообщение);
+    • медиа + длинный текст (>1024)  → медиа + текст отдельным сообщением.
+      Telegram физически не даёт >1024 символов в подписи к медиа, поэтому
+      длинный текст идёт следом. Главное — медиа не теряется, текст полный.
+    • без медиа                       → обычное сообщение.
+    HTML с безопасным фолбэком на обычный текст при кривой разметке.
     """
     text = text[:TEXT_LIMIT]
     senders = {
@@ -212,39 +195,24 @@ async def _send(context, chat_id, text, kind, file_id, reply_markup=None, previe
         "animation": context.bot.send_animation,
     }
 
-    async def _as_caption(parse_mode):
-        await senders[kind](chat_id=chat_id, **{kind: file_id}, caption=text,
-                            parse_mode=parse_mode, reply_markup=reply_markup)
-
-    async def _as_preview(parse_mode):
-        url = await _media_url(context, file_id)
-        lpo = LinkPreviewOptions(url=url, prefer_large_media=True,
-                                 show_above_text=True, is_disabled=False)
-        await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode,
-                                       reply_markup=reply_markup, link_preview_options=lpo)
-
-    async def _as_plain(parse_mode):
-        await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode,
-                                       reply_markup=reply_markup)
-
-    if kind and file_id and len(text) <= CAPTION_LIMIT:
-        primary = _as_caption
-    elif kind and file_id:
-        primary = _as_preview  # объединяем медиа+длинный текст одним сообщением
-    else:
-        primary = _as_plain
+    async def _try(parse_mode):
+        if kind and file_id and len(text) <= CAPTION_LIMIT:
+            await senders[kind](chat_id=chat_id, **{kind: file_id}, caption=text,
+                                parse_mode=parse_mode, reply_markup=reply_markup)
+        elif kind and file_id:
+            # Медиа ВСЕГДА уходит первым; длинный текст — следом, полностью.
+            await senders[kind](chat_id=chat_id, **{kind: file_id})
+            await context.bot.send_message(chat_id=chat_id, text=text,
+                                           parse_mode=parse_mode, reply_markup=reply_markup)
+        else:
+            await context.bot.send_message(chat_id=chat_id, text=text,
+                                           parse_mode=parse_mode, reply_markup=reply_markup)
 
     try:
-        await primary(ParseMode.HTML)
+        await _try(ParseMode.HTML)
     except Exception as exc:  # noqa: BLE001 — кривой HTML → обычный текст
         log.warning("send HTML failed (%s), retry plain", type(exc).__name__)
-        try:
-            await primary(None)
-        except Exception as exc2:  # noqa: BLE001 — крайний фолбэк, чтобы пост ушёл
-            log.warning("primary failed (%s), fallback to split", type(exc2).__name__)
-            if kind and file_id:
-                await senders[kind](chat_id=chat_id, **{kind: file_id})
-            await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
+        await _try(None)
 
 
 async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
